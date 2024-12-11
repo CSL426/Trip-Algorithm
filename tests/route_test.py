@@ -8,6 +8,7 @@ import os
 from datetime import datetime, timedelta
 from config import GOOGLE_MAPS_API_KEY
 
+
 class TravelRouteOptimizer:
     def __init__(self, locations, google_maps_api_key=None):
         if google_maps_api_key is None:
@@ -47,7 +48,7 @@ class TravelRouteOptimizer:
                 if data['status'] == 'OK':
                     duration = data['routes'][0]['legs'][0]['duration']['value']
                     travel_time = duration / 60  # 轉換為分鐘
-                    self.logger.info(f"交通時間: {travel_time:.2f} 分鐘")
+                    self.logger.info(f"交通時間: {travel_time:.0f} 分鐘")
                     return travel_time
                 else:
                     self.logger.warning(f"API 呼叫失敗: {data['status']}")
@@ -133,7 +134,7 @@ class TravelRouteOptimizer:
                     route[i-2]['lat'], route[i-2]['lon'], route[i-2]['name'],
                     location['lat'], location['lon'], location['name']
                 )
-                
+
                 current_time += timedelta(minutes=travel_time)
                 total_time += travel_time
 
@@ -157,22 +158,31 @@ class TravelRouteOptimizer:
 
         return itinerary
 
+
 def main():
     locations = [
         {'name': '士林夜市', 'rating': 4.3, 'lat': 25.0884972,
-            'lon': 121.5198443, 'duration': 120},
+            'lon': 121.5198443, 'duration': 120, 'label': '夜市'},
         {'name': '台北101', 'rating': 4.6, 'lat': 25.0339808,
-            'lon': 121.561964, 'duration': 150},
+            'lon': 121.561964, 'duration': 150, 'label': '景點'},
         {'name': '大安森林公園', 'rating': 4.7, 'lat': 25.029677,
-            'lon': 121.5178326, 'duration': 130},
+            'lon': 121.5178326, 'duration': 130, 'label': '景點'},
         {'name': '淡水老街', 'rating': 4.2, 'lat': 25.1700764,
-            'lon': 121.4393937, 'duration': 120},
+            'lon': 121.4393937, 'duration': 120, 'label': '景點'},
         {'name': '西門町', 'rating': 4.4, 'lat': 25.0439401,
-            'lon': 121.4965457, 'duration': 100},
+            'lon': 121.4965457, 'duration': 100, 'label': '商圈'},
         {'name': '國父紀念館', 'rating': 4.5, 'lat': 25.0400354,
-            'lon': 121.5576703, 'duration': 90},
+            'lon': 121.5576703, 'duration': 90, 'label': '景點'},
         {'name': '基隆廟口夜市', 'rating': 4.3, 'lat': 25.1286858,
-            'lon': 121.7404846, 'duration': 120}
+            'lon': 121.7404846, 'duration': 120, 'label': '夜市'},
+        {'name': '鼎泰豐（信義店）', 'rating': 4.7, 'lat': 25.033976,
+            'lon': 121.563105, 'duration': 90, 'label': '餐廳'},
+        {'name': '阿宗麵線', 'rating': 4.4, 'lat': 25.046303,
+            'lon': 121.508033, 'duration': 30, 'label': '小吃'},
+        {'name': '豐盛町便當', 'rating': 4.3, 'lat': 25.039495,
+            'lon': 121.501761, 'duration': 30, 'label': '餐廳'},
+        {'name': '饒河夜市', 'rating': 4.4, 'lat': 25.047867,
+            'lon': 121.577654, 'duration': 60, 'label': '夜市'}
     ]
 
     optimizer = TravelRouteOptimizer(locations, GOOGLE_MAPS_API_KEY)
@@ -187,6 +197,6 @@ def main():
         print(f",  {item['arrival_time']} - {item['departure_time']}", end="")
         print(f",  停留時間: {item['duration']}分鐘)")
 
+
 if __name__ == '__main__':
     main()
-    

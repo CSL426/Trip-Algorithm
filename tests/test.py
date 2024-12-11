@@ -3,7 +3,7 @@ import requests
 from config import GOOGLE_MAPS_API_KEY
 
 
-def plan_trip(locations, start_time, end_time):
+def plan_trip(locations, start_time, end_time, travel_mode='transit'):
     itinerary = []
     current_time = datetime.strptime(start_time, '%H:%M')
     current_location = None
@@ -17,12 +17,15 @@ def plan_trip(locations, start_time, end_time):
         if current_time >= datetime.strptime(end_time, '%H:%M'):
             break
 
-        # Calculate travel time (you might want to replace this with a real API)
-        travel_time = calculate_travel_time(
-            current_location, location) if current_location else timedelta(minutes=0)
+        # Calculate travel time and details
+        travel_details = calculate_travel_time(
+            current_location, location, travel_mode) if current_location else {
+                'time': timedelta(minutes=0),
+                'transport_details': '起點'
+        }
 
         # Update current time with travel time
-        current_time += travel_time
+        current_time += travel_details['time']
 
         # Calculate end time of visit
         visit_start_time = current_time
@@ -36,7 +39,9 @@ def plan_trip(locations, start_time, end_time):
             'start_time': visit_start_time.strftime('%H:%M'),
             'end_time': visit_end_time.strftime('%H:%M'),
             'duration': location['duration'],
-            'travel_time': travel_time.total_seconds() / 60  # Convert to minutes
+            # Convert to minutes
+            'travel_time': travel_details['time'].total_seconds() / 60,
+            'transport_details': travel_details['transport_details']
         }
 
         itinerary.append(entry)
@@ -52,12 +57,29 @@ def plan_trip(locations, start_time, end_time):
 API_CALL_COUNT = 0
 
 
-def calculate_travel_time(current_location, destination, travel_mode='driving'):
+def calculate_travel_time(current_location, destination, travel_mode='transit'):
     global API_CALL_COUNT
 
     # 如果是第一個地點，返回0分鐘
     if current_location is None:
-        return timedelta(minutes=0)
+        return {'time': timedelta(minutes=0), 'transport_details': '起點'}
+
+    # 對於步行和騎自行車，使用統一的處理邏輯
+    if travel_mode in ['walking', 'bicycling']:
+        # 計算直線距離
+        lat_diff = abs(current_location['lat'] - destination['lat'])
+        lon_diff = abs(current_location['lon'] - destination['lon'])
+
+        # 估算時間（根據緯度經度差異）
+        estimated_time = max(2, int((lat_diff + lon_diff) * 100))
+
+        # 根據模式選擇不同的描述
+        transport_details = '步行' if travel_mode == 'walking' else '騎自行車'
+
+        return {
+            'time': timedelta(minutes=estimated_time),
+            'transport_details': transport_details
+        }
 
     # 構建Google Maps Distance Matrix API的請求URL
     base_url = "https://maps.googleapis.com/maps/api/distancematrix/json"
@@ -80,32 +102,63 @@ def calculate_travel_time(current_location, destination, travel_mode='driving'):
         data = response.json()
 
         # 檢查API響應
-        if data['status'] == 'OK':
+        if data['status'] == 'OK' and data['rows'][0]['elements'][0]['status'] == 'OK':
             # 獲取行駛時間（以秒為單位）
             duration_seconds = data['rows'][0]['elements'][0]['duration']['value']
+            transport_details = get_transport_details(travel_mode, data)
 
             # 轉換為timedelta
-            return timedelta(seconds=duration_seconds)
+            return {
+                'time': timedelta(seconds=duration_seconds),
+                'transport_details': transport_details
+            }
         else:
-            # 如果API調用失敗，回退到默認估算方法
-            print(f"API調用失敗: {data['status']}")
+            # 如果API調用失敗，使用備用方法
+            print(f"API調用失敗: {data.get('status', 'Unknown status')}")
             lat_diff = abs(current_location['lat'] - destination['lat'])
             lon_diff = abs(current_location['lon'] - destination['lon'])
-            return timedelta(minutes=max(2, int((lat_diff + lon_diff) * 100)))
+            return {
+                'time': timedelta(minutes=max(2, int((lat_diff + lon_diff) * 100))),
+                'transport_details': f'預估{travel_mode}路線'
+            }
 
     except Exception as e:
         # 處理可能的異常（如網絡錯誤）
         print(f"計算交通時間時發生錯誤: {e}")
         lat_diff = abs(current_location['lat'] - destination['lat'])
         lon_diff = abs(current_location['lon'] - destination['lon'])
-        return timedelta(minutes=max(2, int((lat_diff + lon_diff) * 100)))
+        return {
+            'time': timedelta(minutes=max(2, int((lat_diff + lon_diff) * 100))),
+            'transport_details': f'預估{travel_mode}路線'
+        }
 
 
-
+def get_transport_details(travel_mode, api_data):
+    """根據travel_mode和API返回的數據，提取具體的交通資訊"""
+    if travel_mode == 'transit':
+        # 提取公共交通資訊
+        try:
+            transit_info = api_data['rows'][0]['elements'][0].get(
+                'transit', {}).get('steps', [])
+            details = []
+            for step in transit_info:
+                if step.get('transit_details'):
+                    details.append(f"{step['transit_details']['line']['vehicle']['type']}: {\
+                                   step['transit_details']['line']['name']}")
+            return ' → '.join(details) if details else '大眾運輸'
+        except Exception:
+            return '大眾運輸'
+    elif travel_mode == 'driving':
+        return '開車'
+    elif travel_mode == 'bicycling':
+        return '騎自行車'
+    elif travel_mode == 'walking':
+        return '步行'
+    return travel_mode
 
 
 def print_itinerary(itinerary):
-    # 定義一些建議和標籤
+    # 定義一些建議和標籤（與之前相同）
     meals = {
         '鼎泰豐（信義店）': '午餐',
         '西門町': '晚餐',
@@ -113,7 +166,6 @@ def print_itinerary(itinerary):
         '豐盛町便當': '午餐'
     }
 
-    # 特別景點標籤
     labels = {
         '大安森林公園': '綠意盎然的城市公園',
         '台北101': '台北地標、觀景台、購物中心',
@@ -139,14 +191,15 @@ def print_itinerary(itinerary):
         # 格式化額外資訊
         extra_note = f" ({', '.join(extra_info)})" if extra_info else ""
 
-        # 輸出交通時間
+        # 輸出交通時間和交通方式
         if item['travel_time'] > 0:
+            print(f"  交通方式: {item['transport_details']}")
             print(f"  交通時間: {item['travel_time']:.0f}分鐘")
 
         # 輸出行程詳細資訊
         print(f"步驟{item['step']}：{item['name']}{extra_note} (評分: {item['rating']}, {
               item['start_time']} - {item['end_time']}, 停留時間: {item['duration']}分鐘)")
-        
+
     # 在行程結束後輸出 API 調用次數
     print("\n--- API 使用統計 ---")
     print(f"本次行程規劃共使用 Google Maps API: {API_CALL_COUNT} 次")
@@ -178,8 +231,9 @@ locations = [
         'lon': 121.577654, 'duration': 60, 'label': '夜市'}
 ]
 
-# Plan the trip
-itinerary = plan_trip(locations, '09:00', '19:00')
+# 現在您可以選擇不同的交通模式
+# 可用模式：'transit', 'driving', 'bicycling', 'walking'
+itinerary = plan_trip(locations, '09:00', '19:00', travel_mode='transit')
 
 # Print the itinerary
 print_itinerary(itinerary)

@@ -1,13 +1,80 @@
 from datetime import datetime, timedelta
+import math
 import requests
 from config import GOOGLE_MAPS_API_KEY
+
+
+def calculate_distance(lat1, lon1, lat2, lon2):
+    """計算兩個地理座標點之間的直線距離（公里）"""
+    R = 6371  # 地球半徑（公里）
+
+    # 轉換為徑度
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+
+    # 經緯度差值
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+    # Haversine公式
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * \
+        math.cos(lat2) * math.sin(dlon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+
+    return R * c
+
+
+def evaluate_location_efficiency(location, current_location, travel_time, max_travel_time=120):
+    """
+    評估地點是否值得訪問
+    
+    參數:
+    - location: 目標地點
+    - current_location: 當前位置
+    - travel_time: 預估旅行時間（分鐘）
+    - max_travel_time: 可接受的最大旅行時間
+    
+    返回:
+    - 效率分數（越高越值得去）
+    """
+    # 如果是第一個地點，直接返回高分
+    if current_location == location:
+        return float('inf')
+    
+    # 計算距離
+    distance = calculate_distance(
+        current_location['lat'], current_location['lon'], 
+        location['lat'], location['lon']
+    )
+    
+    # 停留時間
+    stay_duration = location.get('duration', 0)
+    
+    # 評分
+    rating = location.get('rating', 0)
+    
+    # 旅行時間懲罰
+    if travel_time > max_travel_time:
+        travel_time_penalty = 0.5  # 超過最大可接受時間，降低效率
+    else:
+        travel_time_penalty = 1 - (travel_time / max_travel_time)
+    
+    # 防止除零
+    # 如果距離或旅行時間為零，使用一個很小的常數
+    safe_distance = max(distance, 0.1)
+    safe_travel_time = max(travel_time, 0.1)
+    
+    # 效率分數計算
+    # 這是一個權衡的公式：停留時間 * 評分 / 距離 * 旅行時間
+    efficiency_score = (stay_duration * rating) / (safe_distance * safe_travel_time) * travel_time_penalty
+    
+    return efficiency_score
 
 
 def parse_hours(hours_str):
     """安全地解析營業時間"""
     if hours_str == '24小時開放':
         return ('00:00', '23:59')
-    
+
     try:
         # 拆分時間，並處理可能的異常情況
         times = hours_str.split(' - ')
@@ -17,94 +84,139 @@ def parse_hours(hours_str):
     except Exception:
         return ('00:00', '23:59')
 
-def plan_trip(locations, start_time, end_time, travel_mode='transit'):
+
+def plan_trip(locations, start_time, end_time, travel_mode='transit', distance_threshold=30, efficiency_threshold=0.1):
+    """
+    智能行程規劃函數，考慮距離、效率、營業時間和使用者時間限制
+
+    參數:
+    - locations: 可選地點列表
+    - start_time: 行程開始時間 (HH:MM)
+    - end_time: 行程結束時間 (HH:MM)
+    - travel_mode: 交通模式 (transit, driving, walking, bicycling)
+    - distance_threshold: 最大可接受距離（公里）
+    - efficiency_threshold: 最低可接受效率分數
+    """
     itinerary = []
     current_time = datetime.strptime(start_time, '%H:%M')
+    end_datetime = datetime.strptime(end_time, '%H:%M')
     current_location = None
 
     # 安全地篩選早上可以去的景點和小吃
     morning_locations = [
-        loc for loc in locations 
-        if loc.get('label') in ['景點', '小吃'] and 
-        (lambda x: True 
-         if x.get('hours') == '24小時開放' 
+        loc for loc in locations
+        if loc.get('label') in ['景點', '小吃'] and
+        (lambda x: True
+         if x.get('hours') == '24小時開放'
          else datetime.strptime(parse_hours(x.get('hours', '24小時開放'))[1], '%H:%M').time() >= datetime.strptime('11:00', '%H:%M').time()
-        )(loc)
+         )(loc)
     ]
 
     # 篩選餐廳
     restaurant_locations = [
         loc for loc in locations
         if loc.get('label') in ['餐廳', '小吃'] and
-        (lambda x: 
-         datetime.strptime(parse_hours(x.get('hours', '24小時開放'))[0], '%H:%M').time() <= datetime.strptime('11:00', '%H:%M').time()
-        )(loc)
+        (lambda x:
+         datetime.strptime(parse_hours(x.get('hours', '24小時開放'))[
+                           0], '%H:%M').time() <= datetime.strptime('11:00', '%H:%M').time()
+         )(loc)
     ]
 
-    # 排序早上景點和小吃
-    morning_locations.sort(key=lambda x: x.get('rating', 0), reverse=True)
+    # 儲存已篩選和排序的地點
+    selected_locations = []
 
-    # 排序餐廳，優先考慮高評分
-    restaurant_locations.sort(key=lambda x: x.get('rating', 0), reverse=True)
-
-    # 組合新的位置順序：早上景點/小吃 + 午餐 + 其他地點
+    # 先嘗試加入早上景點和午餐
     if morning_locations and restaurant_locations:
-        first_morning_spot = morning_locations[0]
-        first_restaurant = restaurant_locations[0]
+        # 按評分排序並選擇最高評分的景點和餐廳
+        best_morning_spot = max(
+            morning_locations, key=lambda x: x.get('rating', 0))
+        best_restaurant = max(restaurant_locations,
+                              key=lambda x: x.get('rating', 0))
 
-        # 移除已選擇的地點
-        locations = [loc for loc in locations if loc not in [first_morning_spot, first_restaurant]]
+        selected_locations.extend([best_morning_spot, best_restaurant])
 
-        # 重新排序其他地點
-        sorted_locations = sorted(
-            locations, key=lambda x: x.get('rating', 0), reverse=True)
+        # 從原始列表移除已選擇的地點
+        locations = [loc for loc in locations if loc not in [
+            best_morning_spot, best_restaurant]]
 
-        # 重組行程順序
-        sorted_locations = [first_morning_spot, first_restaurant] + sorted_locations
-    else:
-        # 如果沒有合適的早上景點，則按原邏輯排序
-        sorted_locations = sorted(
-            locations, key=lambda x: x.get('rating', 0), reverse=True)
+    # 剩餘地點智能篩選
+    while locations and current_time < end_datetime:
+        best_location = None
+        best_efficiency = float('-inf')
 
-    for step, location in enumerate(sorted_locations, 1):
-        # 檢查是否已超過結束時間
-        if current_time >= datetime.strptime(end_time, '%H:%M'):
-            break
-
-        # 解析營業時間
-        hours = location.get('hours', '24小時開放')
-        open_time_str, close_time_str = parse_hours(hours)
-
-        try:
-            # 解析營業時間範圍
+        for location in locations:
+            # 檢查營業時間
+            hours = location.get('hours', '24小時開放')
+            open_time_str, close_time_str = parse_hours(hours)
             open_time = datetime.strptime(open_time_str, '%H:%M')
             close_time = datetime.strptime(close_time_str, '%H:%M')
 
-            # 檢查當前時間是否在營業時間內
-            if current_time.time() < open_time.time():
-                # 如果當前時間早於開放時間，調整到開放時間
-                current_time = open_time
-            elif current_time.time() > close_time.time():
-                # 如果當前時間晚於關閉時間，跳過此地點
-                continue
-        except Exception as e:
-            print(f"解析 {location['name']} 的營業時間時出錯: {e}")
+            # 計算交通時間
+            travel_details = calculate_travel_time(
+                current_location, location, travel_mode) if current_location else {
+                    'time': timedelta(minutes=0),
+                    'transport_details': '起點'
+            }
+            travel_time = travel_details['time'].total_seconds() / 60
 
-        # 計算travel time
+            # 計算預估抵達和離開時間
+            estimated_arrival = current_time + travel_details['time']
+            estimated_departure = estimated_arrival + \
+                timedelta(minutes=location['duration'])
+
+            # 檢查時間是否衝突
+            if (estimated_arrival.time() >= open_time.time() and
+                estimated_departure.time() <= close_time.time() and
+                    estimated_departure <= end_datetime):
+
+                # 計算效率
+                distance = calculate_distance(
+                    current_location['lat'], current_location['lon'],
+                    location['lat'], location['lon']
+                ) if current_location else 0
+
+                efficiency = evaluate_location_efficiency(
+                    location, current_location or location, travel_time
+                )
+
+                # 檢查距離和效率閾值
+                if distance <= distance_threshold and efficiency >= efficiency_threshold:
+                    if efficiency > best_efficiency:
+                        best_efficiency = efficiency
+                        best_location = location
+
+        # 如果找到最佳地點，加入行程
+        if best_location:
+            selected_locations.append(best_location)
+            locations.remove(best_location)
+            current_location = best_location
+            current_time += travel_details['time'] + \
+                timedelta(minutes=best_location['duration'])
+        else:
+            # 如果找不到更好的地點，結束規劃
+            break
+
+    # 生成詳細行程
+    itinerary = []
+    current_time = datetime.strptime(start_time, '%H:%M')
+    current_location = None
+
+    for step, location in enumerate(selected_locations, 1):
+        # 計算交通時間
         travel_details = calculate_travel_time(
             current_location, location, travel_mode) if current_location else {
                 'time': timedelta(minutes=0),
                 'transport_details': '起點'
         }
 
-        # 更新當前時間（包括travel time）
+        # 更新當前時間
         current_time += travel_details['time']
 
-        # 計算參觀結束時間
+        # 計算參觀時間
         visit_start_time = current_time
         visit_end_time = current_time + timedelta(minutes=location['duration'])
 
-        # 創建行程
+        # 創建行程項目
         entry = {
             'step': step,
             'name': location['name'],
@@ -114,7 +226,7 @@ def plan_trip(locations, start_time, end_time, travel_mode='transit'):
             'duration': location['duration'],
             'travel_time': travel_details['time'].total_seconds() / 60,
             'transport_details': travel_details['transport_details'],
-            'hours': hours  # 添加營業時間資訊
+            'hours': location.get('hours', '24小時開放')
         }
 
         itinerary.append(entry)

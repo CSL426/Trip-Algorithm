@@ -26,47 +26,48 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 def evaluate_location_efficiency(location, current_location, travel_time, max_travel_time=120):
     """
     評估地點是否值得訪問
-    
+
     參數:
     - location: 目標地點
     - current_location: 當前位置
     - travel_time: 預估旅行時間（分鐘）
     - max_travel_time: 可接受的最大旅行時間
-    
+
     返回:
     - 效率分數（越高越值得去）
     """
     # 如果是第一個地點，直接返回高分
     if current_location == location:
         return float('inf')
-    
+
     # 計算距離
     distance = calculate_distance(
-        current_location['lat'], current_location['lon'], 
+        current_location['lat'], current_location['lon'],
         location['lat'], location['lon']
     )
-    
+
     # 停留時間
     stay_duration = location.get('duration', 0)
-    
+
     # 評分
     rating = location.get('rating', 0)
-    
+
     # 旅行時間懲罰
     if travel_time > max_travel_time:
         travel_time_penalty = 0.5  # 超過最大可接受時間，降低效率
     else:
         travel_time_penalty = 1 - (travel_time / max_travel_time)
-    
+
     # 防止除零
     # 如果距離或旅行時間為零，使用一個很小的常數
     safe_distance = max(distance, 0.1)
     safe_travel_time = max(travel_time, 0.1)
-    
+
     # 效率分數計算
     # 這是一個權衡的公式：停留時間 * 評分 / 距離 * 旅行時間
-    efficiency_score = (stay_duration * rating) / (safe_distance * safe_travel_time) * travel_time_penalty
-    
+    efficiency_score = (stay_duration * rating) / \
+        (safe_distance * safe_travel_time) * travel_time_penalty
+
     return efficiency_score
 
 

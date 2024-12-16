@@ -1,104 +1,105 @@
-# TripNode.py
-import time
-from utils import API_CALL_COUNT
+def format_duration(minutes):
+    """將分鐘轉換為小時和分鐘格式"""
+    hours = minutes // 60
+    remaining_minutes = minutes % 60
+    if hours > 0:
+        return f"{hours}小時{remaining_minutes}分鐘" if remaining_minutes > 0 else f"{hours}小時"
+    return f"{minutes}分鐘"
 
 
 class TripNode:
-    def __init__(self, location, start_time=None, end_time=None, travel_time=None, transport_details=None):
-        """初始化 TripNode"""
-        self.name = location.get('name', '')
-        self.lat = location.get('lat', 0)
-        self.lon = location.get('lon', 0)
-        self.duration = location.get('duration', 0)
-        self.label = location.get('label', '')
-        self.hours = location.get('hours', '24小時開放')
-
+    def __init__(self, step, name, start_time, end_time, duration, travel_time, transport_details, hours):
+        self.step = step
+        self.name = name
         self.start_time = start_time
         self.end_time = end_time
+        self.duration = duration
         self.travel_time = travel_time
         self.transport_details = transport_details
-
+        self.hours = hours
         self.next = None
-        self.prev = None
 
 
 class TripPlan:
-    def __init__(self, start_location=None):
-        """初始化行程規劃"""
+    def __init__(self):
         self.head = None
-        self.tail = None
 
-        if start_location is None:
-            start_location = {
-                'name': '台北車站',
-                'lat': 25.0426731,
-                'lon': 121.5170756,
-                'duration': 0,
-                'label': '交通樞紐',
-                'hours': '24小時開放'
-            }
-
-        self.start_node = TripNode(start_location)
-
-    def add_location(self, location, start_time=None, end_time=None, travel_time=None, transport_details=None):
-        """新增地點到行程"""
-        new_node = TripNode(
-            location,
-            start_time=start_time,
-            end_time=end_time,
-            travel_time=travel_time,
-            transport_details=transport_details
-        )
-
+    def add_node(self, step, name, start_time, end_time, duration, travel_time, transport_details, hours):
+        new_node = TripNode(step, name, start_time, end_time,
+                            duration, travel_time, transport_details, hours)
         if not self.head:
             self.head = new_node
-            self.tail = new_node
-            new_node.prev = self.start_node
-            self.start_node.next = new_node
-        else:
-            self.tail.next = new_node
-            new_node.prev = self.tail
-            self.tail = new_node
-
-        return new_node
+            return
+        current = self.head
+        while current.next:
+            current = current.next
+        current.next = new_node
 
     def print_itinerary(self):
-        """列印整個行程"""
-        current = self.start_node
-        step = 0
-        
-        print("\n每日行程：")
+        from datetime import datetime
+
+        current = self.head
+        total_duration = 0
+        total_travel_time = 0
+        visit_count = 0
+        start_time = self.head.start_time
+        end_time = None
+
+        print("每日行程：")
+
         while current:
-            if current == self.start_node and step > 0:
-                break
-                
-            step += 1
-            print(f"步驟{step}：{current.name} (營業時間: {current.hours}, {current.start_time or '10:00'} - {current.end_time or '10:00'}, 停留時間: {current.duration}分鐘)")
-            
+            is_start = current.step == 0
+            is_end = current.next is None
+
+            # 顯示景點資訊
+            if is_start or is_end:
+                print(f"步驟{current.step + 1}：{current.name}")
+            else:
+                # 如果不是24小時營業，顯示營業時間
+                if current.hours != '24小時開放':
+                    print(f"步驟{current.step + 1}：{current.name}（停留：{current.start_time} - {
+                          current.end_time}，{format_duration(current.duration)}｜營業：{current.hours}）")
+                else:
+                    print(f"步驟{current.step + 1}：{current.name}（停留：{current.start_time} - {
+                          current.end_time}，{format_duration(current.duration)}）")
+                total_duration += current.duration
+                visit_count += 1
+                end_time = current.end_time
+
+            # 顯示交通資訊（不包括最後一個節點）
             if current.next:
-                print(f"➜ 前往 {current.next.name} | 交通方式: {current.next.transport_details} | 交通時間: {int(current.next.travel_time)}分鐘")
-            
+                transport_text = "大眾運輸" if "預估" in current.next.transport_details else current.next.transport_details
+                travel_time = int(current.next.travel_time)
+                print(f"↓ {transport_text} {format_duration(travel_time)}")
+                total_travel_time += travel_time
+
             current = current.next
-        
-        print(f"\nAPI 呼叫次數：{API_CALL_COUNT}次")
+
+        # 計算實際總時間
+        start_datetime = datetime.strptime(start_time, '%H:%M')
+        end_datetime = datetime.strptime(end_time, '%H:%M')
+        total_minutes = (end_datetime - start_datetime).seconds // 60
+
+        # 顯示行程總結
+        print("\n行程總結：")
+        print(f"景點數量：{visit_count}個景點")
+        print(f"總停留時間：約{format_duration(total_duration)}")
+        print(f"總交通時間：約{format_duration(total_travel_time)}")
+        print(
+            f"行程時間：{start_time} - {end_time} ({format_duration(total_minutes)})")
 
 
-def convert_itinerary_to_trip_plan(itinerary, locations, start_location=None):
-    """將行程列表轉換為 TripPlan"""
-    trip_plan = TripPlan(start_location)
-    trip_plan.start_node.start_time = '10:00'
-    trip_plan.start_node.end_time = '10:00'
-
-    for item in itinerary:
-        location = next(
-            (loc for loc in locations if loc['name'] == item['name']), None)
-        if location:
-            trip_plan.add_location(
-                location,
-                start_time=item['start_time'],
-                end_time=item['end_time'],
-                travel_time=item['travel_time'],
-                transport_details=item['transport_details']
-            )
-
+def convert_itinerary_to_trip_plan(itinerary, locations=None):
+    trip_plan = TripPlan()
+    for entry in itinerary:
+        trip_plan.add_node(
+            entry['step'],
+            entry['name'],
+            entry['start_time'],
+            entry['end_time'],
+            entry['duration'],
+            entry['travel_time'],
+            entry['transport_details'],
+            entry['hours']
+        )
     return trip_plan

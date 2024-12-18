@@ -29,8 +29,8 @@ def get_transport_details(travel_mode, api_data):
             details = []
             for step in transit_info:
                 if step.get('transit_details'):
-                    details.append(f"{step['transit_details']['line']['vehicle']['type']}: {
-                                   step['transit_details']['line']['name']}")
+                    details.append(f"{step['transit_details']['line']['vehicle']['type']}: "
+                                   f"{step['transit_details']['line']['name']}")
             return ' → '.join(details) if details else '大眾運輸'
         except Exception:
             return '大眾運輸'
@@ -77,8 +77,8 @@ def calculate_travel_time(current_location, destination, travel_mode='transit'):
     }
 
     try:
-        print(f"Calling API: {current_location['name']} to {
-              destination['name']}")  # Debug info
+        print(f"Calling API: {current_location['name']} "
+              f"to {destination['name']}")  # Debug info
         response = requests.get(base_url, params=params)
         API_CALL_COUNT += 1
         print(f"API calls so far: {API_CALL_COUNT}")  # Debug info
@@ -94,11 +94,11 @@ def calculate_travel_time(current_location, destination, travel_mode='transit'):
                 'transport_details': transport_details
             }
         else:
-            print(f"API Error: {data.get('status')
-                                } - Using fallback calculation")  # Debug info
+            print(f"API Error: {data.get('status')}"
+                  " - Using fallback calculation")  # Debug info
     except Exception as e:
-        print(f"Error calling API: {
-              str(e)} - Using fallback calculation")  # Debug info
+        print(f"Error calling API: {str(e)}",
+              "- Using fallback calculation")  # Debug info
 
     # 如果API調用失敗，使用備用方法
     lat_diff = abs(current_location['lat'] - destination['lat'])

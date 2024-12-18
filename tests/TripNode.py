@@ -57,11 +57,13 @@ class TripPlan:
             else:
                 # 如果不是24小時營業，顯示營業時間
                 if current.hours != '24小時開放':
-                    print(f"步驟{current.step + 1}：{current.name}（停留：{current.start_time} - {
-                          current.end_time}，{format_duration(current.duration)}｜營業：{current.hours}）")
+                    print(f"步驟{current.step + 1}：{current.name}"
+                          f"（停留：{current.start_time} - {current.end_time}，"
+                          f"{format_duration(current.duration)}｜營業：{current.hours}）")
                 else:
-                    print(f"步驟{current.step + 1}：{current.name}（停留：{current.start_time} - {
-                          current.end_time}，{format_duration(current.duration)}）")
+                    print(f"步驟{current.step + 1}：{current.name}"
+                          f"（停留：{current.start_time} - {current.end_time}，"
+                          f"{format_duration(current.duration)}）")
                 total_duration += current.duration
                 visit_count += 1
                 end_time = current.end_time

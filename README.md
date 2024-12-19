@@ -23,7 +23,6 @@ git clone <https://github.com/CSL426/Trip-Algorithm>
 cd Trip_algorithm
 poetry install
 ```
-```
 
 ## Configuration
 

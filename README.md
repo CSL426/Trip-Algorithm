@@ -15,6 +15,7 @@
 
 - Python 3.9+
 - Poetry
+```
 
 ## Installation
 

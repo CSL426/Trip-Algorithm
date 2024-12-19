@@ -78,7 +78,7 @@ def calculate_travel_time(current_location, destination, travel_mode='transit'):
 
     try:
         print(f"Calling API: {current_location['name']} "
-              f"to {destination['name']}")  # Debug info
+              f"to {destination['name']}", end=" ")  # Debug info
         response = requests.get(base_url, params=params)
         API_CALL_COUNT += 1
         print(f"API calls so far: {API_CALL_COUNT}")  # Debug info

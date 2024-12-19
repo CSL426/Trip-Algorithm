@@ -1,5 +1,6 @@
 # api key
-tests/config.py
+**/config.py
+!src/config/config_example.py
 
 # Python
 __pycache__/
@@ -35,9 +36,6 @@ ENV/
 .vscode/
 *.swp
 *.swo
-
-# Poetry
-poetry.lock
 
 # Jupyter Notebook
 .ipynb_checkpoints

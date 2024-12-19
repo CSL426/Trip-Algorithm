@@ -1,5 +1,3 @@
-對，我建議加入這段設定說明，因為你的程式需要 Google Maps API Key 才能正常運作。更新後的 README.md 會是這樣：
-
 ```markdown
 # Trip Algorithm
 

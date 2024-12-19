@@ -1,4 +1,3 @@
-```markdown
 # Trip Algorithm
 
 智能行程規劃系統，根據輸入的景點資訊自動生成最佳行程。
@@ -15,7 +14,6 @@
 
 - Python 3.9+
 - Poetry
-```
 
 ## Installation
 

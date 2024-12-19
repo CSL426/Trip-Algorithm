@@ -1,20 +1,77 @@
-# Trip-Algorithm
+對，我建議加入這段設定說明，因為你的程式需要 Google Maps API Key 才能正常運作。更新後的 README.md 會是這樣：
 
-Trip Planner Project Structure:
+```markdown
+# Trip Algorithm
 
-TripPlanner.py (核心規劃邏輯)
-- 負責行程演算法和規劃
-- 呼叫 utils.py 計算時間和距離
-- 使用 TripNode.py 組織和顯示行程
+智能行程規劃系統，根據輸入的景點資訊自動生成最佳行程。
 
-TripNode.py (資料結構)
-- 使用鏈結串列儲存行程
-- 處理行程資料的組織和顯示格式
+## Features
 
-utils.py (工具函式)
-- 提供距離計算、時間估算等功能
-- 處理 Google Maps API 呼叫
-- 提供共用的輔助函式
+- 自動規劃最佳行程路線
+- 考慮景點營業時間
+- 智能安排用餐時間
+- 整合大眾運輸資訊
+- LINE Bot 訊息輸出
 
-config.py (API存放)
-- 存放我的API-KEY
+## Requirements 
+
+- Python 3.9+
+- Poetry
+
+## Installation
+
+```bash
+git clone <https://github.com/CSL426/Trip-Algorithm>
+cd Trip_algorithm
+poetry install
+```
+
+## Configuration
+
+1. 複製 config 範本：
+```bash
+cp src/config/config_example.py src/config/config.py
+```
+
+2. 在 `config.py` 中設定你的 Google Maps API Key
+
+## Usage
+
+```python
+from src.core import plan_trip
+
+locations = [
+    {
+        'name': '台北101',
+        'rating': 4.6,
+        'lat': 25.0339808,
+        'lon': 121.561964,
+        'duration': 150,
+        'label': '景點',
+        'hours': '09:00 - 22:00'
+    }
+]
+
+itinerary = plan_trip(
+    locations=locations,
+    start_time='09:00',
+    end_time='21:00'
+)
+```
+
+## Project Structure
+
+```
+Trip_algorithm/
+├── src/
+│   ├── api/          # API endpoints
+│   ├── config/       # Configuration
+│   ├── core/         # Core algorithm
+│   └── line/         # LINE message formatter
+└── tests/            # Tests
+```
+
+## License
+
+MIT License
+```

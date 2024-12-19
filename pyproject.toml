@@ -3,11 +3,15 @@ name = "trip-algorithm"
 version = "0.1.0"
 description = ""
 authors = ["CSL426 <spark.cs.liao@gmail.com>"]
+packages = [{include = "src"}]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.8.10"
+python = "^3.9"
 requests = "^2.32.3"
+pytest = "^8.3.4"
+fastapi = "^0.115.6"
+uvicorn = "^0.34.0"
 
 
 [build-system]

@@ -1,6 +1,18 @@
+# src/core/TripPlanner.py
+
+# fmt: off
+import os
+import sys
 from datetime import datetime, timedelta
-from utils import calculate_distance, calculate_travel_time, parse_hours
-from TripNode import convert_itinerary_to_trip_plan
+
+# 將專案根目錄加入到 Python 路徑
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(project_root)
+
+# 使用絕對導入
+from src.core.utils import calculate_distance, calculate_travel_time, parse_hours  
+from src.core.TripNode import convert_itinerary_to_trip_plan  
+# fmt: on
 
 
 def evaluate_location_efficiency(location, current_location, travel_time, remaining_time, current_datetime):

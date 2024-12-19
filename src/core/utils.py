@@ -1,8 +1,18 @@
-# utils.py
+# src/core/utils.py
+
+# fmt: off
+import os
+import sys
 import math
 import requests
 from datetime import datetime, timedelta
-from config import GOOGLE_MAPS_API_KEY
+
+# 添加專案根目錄到 Python 路徑
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(project_root)
+
+from src.config.config import GOOGLE_MAPS_API_KEY
+# fmt: on
 
 # Global variable to track API calls
 API_CALL_COUNT = 0

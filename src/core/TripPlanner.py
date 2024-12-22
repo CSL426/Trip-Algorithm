@@ -12,7 +12,32 @@ sys.path.append(project_root)
 # 使用絕對導入
 from src.core.utils import calculate_distance, calculate_travel_time, parse_hours  
 from src.core.TripNode import convert_itinerary_to_trip_plan  
+from src.core.models import validate_locations, Location
+from typing import List, Union, Dict, Any
 # fmt: on
+
+
+class TripPlanner:
+    def __init__(self):
+        self.locations: List[Location] = []
+
+    def load_locations(self, locations_data: List[Dict[str, Any]]) -> None:
+        """載入並驗證地點資料"""
+        self.locations = validate_locations(locations_data)
+
+    def plan(self, start_time='09:00', end_time='20:00', travel_mode='transit',
+             custom_start=None, custom_end=None) -> list:
+        """執行行程規劃"""
+        # 將 Location 物件轉換為 dict
+        locations_dict = [loc.dict() for loc in self.locations]
+        return plan_trip(
+            locations=locations_dict,
+            start_time=start_time,
+            end_time=end_time,
+            travel_mode=travel_mode,
+            custom_start=custom_start,
+            custom_end=custom_end
+        )
 
 
 def evaluate_location_efficiency(location, current_location, travel_time, remaining_time, current_datetime):
@@ -320,45 +345,23 @@ def plan_trip(locations, start_time='09:00', end_time='20:00', travel_mode='tran
 
 def main():
     import time
+    from src.core.test_data import TEST_LOCATIONS, TEST_CUSTOM_START
+
     total_start_time = time.time()
 
-    # 測試用的地點資料
-    locations = [
-        {'name': '士林夜市', 'rating': 4.3, 'lat': 25.0884972, 'lon': 121.5198443,
-         'duration': 120, 'label': '夜市', 'hours': '17:00 - 00:00'},
-        {'name': '台北101', 'rating': 4.6, 'lat': 25.0339808, 'lon': 121.561964,
-         'duration': 150, 'label': '景點', 'hours': '09:00 - 22:00'},
-        {'name': '大安森林公園', 'rating': 4.7, 'lat': 25.029677, 'lon': 121.5178326,
-         'duration': 130, 'label': '景點', 'hours': '24小時開放'},
-        {'name': '淡水老街', 'rating': 4.2, 'lat': 25.1700764, 'lon': 121.4393937,
-         'duration': 120, 'label': '景點', 'hours': '10:00 - 22:00'},
-        {'name': '西門町', 'rating': 4.4, 'lat': 25.0439401, 'lon': 121.4965457,
-         'duration': 100, 'label': '商圈', 'hours': '10:00 - 22:00'},
-        {'name': '國父紀念館', 'rating': 4.5, 'lat': 25.0400354, 'lon': 121.5576703,
-         'duration': 90, 'label': '景點', 'hours': '09:00 - 17:00'},
-        {'name': '鼎泰豐（信義店）', 'rating': 4.7, 'lat': 25.033976, 'lon': 121.563105,
-         'duration': 90, 'label': '餐廳', 'hours': '11:00 - 21:00'},
-        {'name': '阿宗麵線', 'rating': 4.4, 'lat': 25.046303, 'lon': 121.508033,
-         'duration': 30, 'label': '小吃', 'hours': '10:00 - 22:00'},
-        {'name': '信義威秀美食街', 'rating': 4.3, 'lat': 25.0333075, 'lon': 121.5677825,
-         'duration': 60, 'label': '餐廳', 'hours': '11:00 - 22:00'}
-    ]
+    # 建立規劃器實例
+    planner = TripPlanner()
 
-    # 自訂起點（住家）
-    custom_start = {
-        'name': '家',
-        'lat': 25.0339808,
-        'lon': 121.561964
-    }
+    # 載入測試資料
+    planner.load_locations(TEST_LOCATIONS)
 
     # 規劃行程
-    itinerary = plan_trip(
-        locations=locations,
-        start_time='09:00',
-        end_time='20:00',
-        travel_mode='transit',
-        custom_start=custom_start,
-        custom_end=custom_start  # 結束後返回住家
+    itinerary = planner.plan(
+        start_time='08:00',
+        end_time='18:00',
+        travel_mode='driving',
+        custom_start=TEST_CUSTOM_START,
+        custom_end=TEST_CUSTOM_START  # 結束後返回住家
     )
 
     # 轉換並印出行程

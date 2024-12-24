@@ -11,114 +11,109 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.append(project_root)
 
 # 使用絕對導入
-from src.core.utils import calculate_distance, calculate_travel_time
-from src.core.TripNode import convert_itinerary_to_trip_plan
+from src.core.test_data import TEST_LOCATIONS, TEST_CUSTOM_START
+from src.core.planners.base_planner import BaseTripPlanner
 from src.core.planners.advanced_planner import AdvancedTripPlanner
-from src.core.planners.business_hours import BusinessHours
+from src.core.TripNode import convert_itinerary_to_trip_plan
 # fmt: on
 
 
-class TripPlanner:
-    def __init__(self):
-        self.planner = None
+class TripPlanner(BaseTripPlanner):
+    """
+    行程規劃器主類別
+    繼承自 BaseTripPlanner，提供完整的行程規劃功能
+    """
 
-    def plan(self, locations, **kwargs):
-        print("規劃參數：", kwargs)  # 除錯用
-        self.planner = AdvancedTripPlanner(**kwargs)
-        self.planner.initialize_locations(locations)
+    def __init__(self):
+        """
+        初始化 TripPlanner
+        設定基本屬性並建立規劃器實例
+        """
+        super().__init__()
+        self.planner = None
+        self.locations = None
+
+    def initialize_locations(self, locations, custom_start=None, custom_end=None):
+        """
+        初始化地點資料
+
+        參數：
+            locations (List[Dict]): 景點清單，每個景點包含：
+                - name: 景點名稱
+                - lat: 緯度
+                - lon: 經度
+                - duration: 建議停留時間（分鐘）
+                - label: 景點類型
+                - hours: 營業時間資訊
+            custom_start (Dict): 自訂起點資訊，預設為 None
+            custom_end (Dict): 自訂終點資訊，預設為 None
+        """
+        self.locations = locations
+        super().initialize_locations(locations, custom_start, custom_end)
+
+    def plan(self, start_time='09:00', end_time='20:00',
+             travel_mode='transit', custom_start=None, custom_end=None):
+        """
+        執行行程規劃
+
+        參數：
+            start_time (str): 開始時間，格式為 'HH:MM'
+            end_time (str): 結束時間，格式為 'HH:MM'
+            travel_mode (str): 交通方式，可選 'transit', 'driving', 'walking', 'bicycling'
+            custom_start (Dict): 自訂起點資訊
+            custom_end (Dict): 自訂終點資訊
+
+        回傳：
+            List[Dict]: 規劃好的行程清單
+        """
+        # 建立進階規劃器實例
+        self.planner = AdvancedTripPlanner(
+            start_time=start_time,
+            end_time=end_time,
+            travel_mode=travel_mode,
+            custom_start=custom_start,
+            custom_end=custom_end
+        )
+
+        # 初始化地點資訊
+        self.planner.initialize_locations(
+            self.available_locations,
+            custom_start,
+            custom_end
+        )
+
+        # 執行規劃並回傳結果
         return self.planner.plan()
 
 
-def evaluate_location_efficiency(location, current_location, travel_time,
-                                 remaining_time, current_datetime):
-    """評估地點效率"""
-    if current_location == location:
-        return float('-inf')
-
-    distance = calculate_distance(
-        current_location['lat'], current_location['lon'],
-        location['lat'], location['lon']
-    ) if current_location else 0
-
-    stay_duration = location.get('duration', 0)
-    safe_distance = max(distance, 0.1)
-    safe_travel_time = max(travel_time, 0.1)
-
-    efficiency = stay_duration / (safe_distance * safe_travel_time)
-
-    # 用餐時間調整
-    hours_handler = BusinessHours(location['hours'])
-    is_lunch_time = current_datetime.hour in [11, 12, 13]
-    is_dinner_time = current_datetime.hour in [17, 18]
-
-    if location.get('label') in ['餐廳', '小吃', '夜市']:
-        if is_lunch_time or is_dinner_time:
-            efficiency *= 2.0
-        else:
-            efficiency *= 0.3
-    elif is_lunch_time or is_dinner_time:
-        efficiency *= 0.5
-
-    # 交通時間調整
-    if travel_time > 45:
-        efficiency *= 0.5
-    elif travel_time > 30:
-        efficiency *= 0.7
-
-    # 營業時間檢查
-    if not hours_handler.is_open_at(current_datetime):
-        return float('-inf')
-
-    return efficiency
-
-
-def get_dinner_location(locations, current_location, current_time):
-    """尋找適合的晚餐地點"""
-    dinner_spots = []
-    for loc in locations:
-        if loc.get('label') in ['餐廳', '小吃', '夜市']:
-            travel_details = calculate_travel_time(
-                current_location, loc, 'transit')
-            travel_time = travel_details['time'].total_seconds() / 60
-            arrival_time = current_time + timedelta(minutes=travel_time)
-
-            hours_handler = BusinessHours(loc['hours'])
-            if hours_handler.is_open_at(arrival_time):
-                dinner_spots.append({
-                    'location': loc,
-                    'travel_time': travel_time,
-                    'travel_details': travel_details,
-                    'arrival_time': arrival_time
-                })
-
-
-def should_end_early(location, current_time):
-    """判斷是否應該提前結束當前景點"""
-    hours_handler = BusinessHours(location['hours'])
-    return (location.get('label') in ['景點', '公園'] and
-            hours_handler.is_open_at(current_time) and
-            current_time.hour >= 16)
-
-
 def main():
+    """測試主函式"""
     import time
-    from src.core.test_data import TEST_LOCATIONS, TEST_CUSTOM_START
 
     total_start_time = time.time()
 
+    # 建立規劃器實例
     planner = TripPlanner()
-    itinerary = planner.plan(
+
+    # 步驟1：初始化地點資料
+    planner.initialize_locations(
         locations=TEST_LOCATIONS,
-        start_time='08:00',
-        end_time='18:00',
-        travel_mode='driving',
         custom_start=TEST_CUSTOM_START,
         custom_end=TEST_CUSTOM_START
     )
 
+    # 步驟2：執行行程規劃
+    itinerary = planner.plan(
+        start_time='08:00',
+        end_time='18:00',
+        travel_mode='driving'
+    )
+
+    # 輸出行程結果
     trip_plan = convert_itinerary_to_trip_plan(itinerary)
     trip_plan.print_itinerary()
 
+    # 顯示執行時間
     total_execution_time = time.time() - total_start_time
     print(f"\n總執行時間：{total_execution_time:.2f}秒")
 

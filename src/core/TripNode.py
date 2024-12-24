@@ -92,7 +92,7 @@ class TripPlan:
         # 格式化日期顯示
         date_str = self.trip_date.strftime("%m月%d日")
         weekday = get_weekday_chinese(self.trip_date.weekday())
-        print(f"\n每日行程({date_str} 星期{weekday})：")
+        print(f"\n一日行程 ({date_str} 星期{weekday})：")
 
         while current:
             is_start = current.step == 0

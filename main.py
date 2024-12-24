@@ -18,7 +18,7 @@ def main():
         itinerary = planner.plan(
             start_time='09:00',
             end_time='20:00',
-            travel_mode='transit',
+            travel_mode='driving',
             custom_start=TEST_CUSTOM_START,
             custom_end=TEST_CUSTOM_START  # 結束後返回住家
         )

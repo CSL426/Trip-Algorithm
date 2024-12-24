@@ -1,0 +1,37 @@
+# Core dependencies for Trip Algorithm
+# 基礎套件
+python==3.9.0  # 建議的 Python 版本
+requests==2.31.0  # 用於呼叫 Google Maps API
+python-dotenv==1.0.0  # 用於管理環境變數，例如 API 金鑰
+
+# Data processing
+pandas==2.1.4  # 用於數據處理和分析
+numpy==1.26.2  # 用於數值計算
+
+# Web APIs
+fastapi==0.105.0  # 用於建立 API 服務
+uvicorn==0.24.0  # ASGI 伺服器，用於運行 FastAPI
+pydantic==2.5.2  # 用於數據驗證
+
+# Time and date handling
+python-dateutil==2.8.2  # 提供更強大的日期時間處理功能
+pytz==2023.3  # 用於時區處理
+
+# Testing
+pytest==7.4.3  # 用於單元測試
+pytest-cov==4.1.0  # 用於測試覆蓋率分析
+
+# Line Bot SDK
+line-bot-sdk==3.7.0  # 用於 Line Bot 整合
+
+# Geographic calculations
+geopy==2.4.1  # 用於地理座標計算
+
+# Development tools
+black==23.12.0  # 程式碼格式化工具
+isort==5.13.2  # Import 語句排序工具
+flake8==6.1.0  # 程式碼品質檢查工具
+
+# Documentation
+mkdocs==1.5.3  # 用於生成專案文檔
+mkdocs-material==9.5.2  # Material 主題for MkDocs

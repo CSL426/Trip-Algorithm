@@ -1,6 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel, Field
-
+from typing import List, Dict
 
 class Location(BaseModel):
     name: str
@@ -9,7 +9,7 @@ class Location(BaseModel):
     rating: Optional[float] = None
     duration: int
     label: str
-    hours: str = "24小時開放"
+    hours: Dict[int, List[Dict[str, str]]]
 
     class Config:
         json_schema_extra = {

@@ -1,4 +1,4 @@
-# src\core\TripNode.py
+# src\core\trip_node.py
 from datetime import datetime, timedelta
 
 

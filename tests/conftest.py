@@ -1,4 +1,4 @@
-# test/conftest.py
+# tests/conftest.py
 
 #fmt: off
 import os
@@ -11,7 +11,7 @@ sys.path.append(str(project_root))
 
 # 之後再導入其他模組
 import pytest
-from src.core.TripPlanner import TripPlanner
+from src.core.trip_planner import TripPlanner
 #fmt: on
 
 

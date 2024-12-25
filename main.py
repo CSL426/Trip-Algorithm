@@ -1,8 +1,8 @@
 # main.py
 import time
-from src.core.TripPlanner import TripPlanner
+from src.core.trip_planner import TripPlanner
 from src.core.test_data import TEST_LOCATIONS, TEST_CUSTOM_START
-from src.core.TripNode import convert_itinerary_to_trip_plan
+from src.core.trip_node import convert_itinerary_to_trip_plan
 from src.line.formatter import LineFormatter
 
 
@@ -28,7 +28,7 @@ def main():
         # 輸入參數說明：
         #   - start_time: 開始時間 (格式: 'HH:MM')
         #   - end_time: 結束時間 (格式: 'HH:MM')
-        #   - travel_mode: 交通方式 ('driving', 'transit', 'walking', 'bicycling')
+        #   - travel_mode: 交通方式 ("大眾運輸", "開車", "騎自行車", "步行")
         #   - custom_start: 自訂起點 (Dict，包含 name, lat, lon 等資訊)
         #   - custom_end: 自訂終點 (Dict，包含 name, lat, lon 等資訊)
         # 輸出：
@@ -36,7 +36,7 @@ def main():
         itinerary = planner.plan(
             start_time='09:00',
             end_time='20:00',
-            travel_mode='driving',
+            travel_mode='開車',
             custom_start=TEST_CUSTOM_START,
             custom_end=TEST_CUSTOM_START  # 結束後返回起點
         )

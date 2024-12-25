@@ -11,7 +11,7 @@ from pydantic import BaseModel
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(project_root)
 
-from src.core.TripPlanner import plan_trip
+from src.core.trip_planner import plan_trip
 from src.line.formatter import LineFormatter
 # fmt: on
 

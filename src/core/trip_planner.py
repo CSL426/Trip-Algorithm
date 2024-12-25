@@ -1,4 +1,4 @@
-# src/core/TripPlanner.py
+# src\core\trip_planner.py
 
 # fmt: off
 import os
@@ -14,7 +14,7 @@ sys.path.append(project_root)
 from src.core.test_data import TEST_LOCATIONS, TEST_CUSTOM_START
 from src.core.planners.base_planner import BaseTripPlanner
 from src.core.planners.advanced_planner import AdvancedTripPlanner
-from src.core.TripNode import convert_itinerary_to_trip_plan
+from src.core.trip_node import convert_itinerary_to_trip_plan
 # fmt: on
 
 
@@ -59,7 +59,7 @@ class TripPlanner(BaseTripPlanner):
         參數：
             start_time (str): 開始時間，格式為 'HH:MM'
             end_time (str): 結束時間，格式為 'HH:MM'
-            travel_mode (str): 交通方式，可選 'transit', 'driving', 'walking', 'bicycling'
+            travel_mode (str): 交通方式，可選 "大眾運輸", "開車", "騎自行車", "步行"
             custom_start (Dict): 自訂起點資訊
             custom_end (Dict): 自訂終點資訊
 
@@ -106,7 +106,7 @@ def main():
     itinerary = planner.plan(
         start_time='08:00',
         end_time='18:00',
-        travel_mode='driving'
+        travel_mode='開車'
     )
 
     # 輸出行程結果

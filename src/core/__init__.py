@@ -1,5 +1,5 @@
 # src/core/__init__.py
-from .TripPlanner import TripPlanner
-from .TripNode import TripPlan, TripNode
+from .trip_planner import TripPlanner
+from .trip_node import TripPlan, TripNode
 
-__all__ = ['plan_trip', 'TripPlan', 'TripNode']
+__all__ = ['plan_trip', 'TripPlan', 'trip_node']

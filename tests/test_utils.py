@@ -1,17 +1,9 @@
 # tests\test_utils.py
 
-# fmt: off
 import os
 import sys
 from pathlib import Path
-
-# 獲取專案根目錄
-project_root = Path(__file__).parent.parent
-sys.path.append(str(project_root))
-
-# 之後再導入其他模組
 from src.core.utils import calculate_distance, calculate_travel_time, parse_hours
-# fmt: on
 
 
 def test_utils():

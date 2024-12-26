@@ -1,4 +1,5 @@
 # tests\test_models.py
+
 from src.core.models import TripRequirement, StartEndPoint
 
 
@@ -10,15 +11,8 @@ def test_input_formats():
     test_requirement = {
         "出發時間": "09:00",
         "結束時間": "18:00",
-        "出發地點": "中壢火車站",
-        "結束地點": "25.0339808,121.561964",  # 用經緯度
-        "交通方式": "大眾運輸",
-        "可接受距離門檻": 30,
-        "早餐時間": "none",
-        "午餐時間": "12:00",
-        "晚餐時間": "18:00",
-        "預算": 0,
-        "出發日": "none"
+        "出發地點": StartEndPoint.parse_input("中壢火車站"),  # 先轉換成正確物件
+        "結束地點": StartEndPoint.parse_input("24.9681558,121.1927239"),
     }
 
     try:

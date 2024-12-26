@@ -116,41 +116,85 @@ class ItinerarySpot(BaseModel):
 
 
 def get_place_info_by_coordinates(lat: float, lon: float) -> dict:
-    """用經緯度查詢地點資訊
+    """
+    根據經緯度取得地點資訊
 
-    輸入:
+    輸入：
         lat: 緯度
         lon: 經度
-
-    輸出:
-        dict: 只包含必要的地點資訊（名稱和經緯度）
+    輸出：
+        回傳字典包含:
+        - name: 地點名稱，優先順序：建築物 > 地標 > 路名
+        - lat: 緯度
+        - lon: 經度
     """
     try:
+        # 1. Places API Nearby Search
+        nearby_params = {
+            "location": f"{lat},{lon}",
+            "rankby": "distance",  # 改用距離排序
+            "language": "zh-TW",
+            "key": GOOGLE_MAPS_API_KEY
+        }
+
         response = requests.get(
             "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
-            params={
-                "location": f"{lat},{lon}",
-                "radius": 1,
-                "key": GOOGLE_MAPS_API_KEY
-            }
+            params=nearby_params
         )
 
         if response.status_code == 200:
-            data = response.json()
-            if data.get("results"):
-                place = data["results"][0]
+            results = response.json().get("results", [])
+
+            if results:
+                # 過濾掉行政區
+                valid_results = [r for r in results if not (
+                    'locality' in r.get('types', []) or
+                    'administrative_area' in r.get('types', []) or
+                    'political' in r.get('types', [])
+                )]
+
+                if valid_results:
+                    result = valid_results[0]  # 取最近的有效結果
+                    name = result.get("name")
+                    vicinity = result.get("vicinity")
+                    if vicinity:
+                        return {
+                            "name": f"{name} ({vicinity})",
+                            "lat": lat,
+                            "lon": lon
+                        }
+                    return {
+                        "name": name,
+                        "lat": lat,
+                        "lon": lon
+                    }
+
+        # 2. 如果找不到，用 Geocoding API
+        geocode_params = {
+            "latlng": f"{lat},{lon}",
+            "language": "zh-TW",
+            "key": GOOGLE_MAPS_API_KEY
+        }
+
+        response = requests.get(
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            params=geocode_params
+        )
+
+        if response.status_code == 200:
+            results = response.json().get("results", [])
+            if results:
                 return {
-                    "name": place.get("name", f"自訂地點({lat}, {lon})"),
+                    "name": results[0].get("formatted_address"),
                     "lat": lat,
                     "lon": lon
                 }
 
     except Exception as e:
-        print(f"Google Places API 錯誤: {str(e)}")
+        print(f"API 錯誤: {str(e)}")
 
-    # API 失敗時回傳基本資訊
     return {
-        "name": f"自訂地點({lat}, {lon})",
+        "name": f"未命名地點({lat}, {lon})",
         "lat": lat,
         "lon": lon
     }
@@ -170,7 +214,8 @@ def get_place_info_by_name(name: str) -> dict:
             "https://maps.googleapis.com/maps/api/place/textsearch/json",
             params={
                 "query": name,
-                "key": GOOGLE_MAPS_API_KEY
+                "language": "zh-TW",
+                "key": GOOGLE_MAPS_API_KEY,
             }
         )
 

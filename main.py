@@ -1,86 +1,175 @@
 # main.py
+
 import time
+from typing import Dict, List, Optional
+
 from src.core.trip_planner import TripPlanner
-from src.core.test_data import TEST_LOCATIONS, TEST_CUSTOM_START
-from src.core.trip_node import convert_itinerary_to_trip_plan
-from src.line.formatter import LineFormatter
-from src.core.models import StartEndPoint
+from src.core.models import TripRequirement, PlaceDetail
+from src.core.test_data import TEST_LOCATIONS
+
+
+class TripPlanningSystem:
+    """
+    行程規劃系統主類別
+
+    負責整合各個元件並執行完整的行程規劃流程
+    包含：資料驗證、行程規劃、結果輸出
+    """
+
+    def __init__(self):
+        """初始化行程規劃器"""
+        self.planner = TripPlanner()
+        self.execution_time = 0
+
+    def validate_locations(self, locations: List[Dict]) -> List[PlaceDetail]:
+        """
+        驗證並轉換地點資料格式
+
+        輸入參數:
+            locations (List[Dict]): 原始地點資料列表
+                格式: [
+                    {
+                        "name": str,          # 地點名稱
+                        "rating": float,      # 評分 (0-5)
+                        "lat": float,         # 緯度
+                        "lon": float,         # 經度
+                        "duration_min": int,  # 建議停留時間(分鐘)
+                        "label": str,         # 地點類型
+                        "hours": dict         # 營業時間
+                    },
+                    ...
+                ]
+
+        回傳:
+            List[PlaceDetail]: 驗證後的地點資料列表
+
+        異常:
+            ValueError: 當資料格式不正確時
+        """
+        validated_locations = []
+        for loc in locations:
+            try:
+                place = PlaceDetail(**loc)
+                validated_locations.append(place)
+            except Exception as e:
+                print(f"地點資料驗證錯誤 ({loc.get('name', 'Unknown')}): {str(e)}")
+                raise
+        return validated_locations
+
+    def validate_requirement(self, requirement: Dict) -> TripRequirement:
+        """
+        驗證並轉換使用者需求資料
+
+        輸入參數:
+            requirement (Dict): 使用者需求資料
+                格式: {
+                    "start_time": str,        # 開始時間 (HH:MM)
+                    "end_time": str,          # 結束時間 (HH:MM)
+                    "start_point": str,       # 起點
+                    "end_point": str,         # 終點
+                    "transport_mode": str,    # 交通方式
+                    "distance_threshold": int, # 距離限制(km)
+                    "breakfast_time": str,    # 早餐時間
+                    "lunch_time": str,        # 午餐時間
+                    "dinner_time": str,       # 晚餐時間
+                    "budget": Union[int,str], # 預算
+                    "date": str               # 日期 (MM-DD)
+                }
+
+        回傳:
+            TripRequirement: 驗證後的需求物件
+        """
+        try:
+            return TripRequirement(**requirement)
+        except Exception as e:
+            print(f"需求資料驗證錯誤: {str(e)}")
+            raise
+
+    def plan_trip(self, locations: List[Dict], requirement: Dict) -> List[Dict]:
+        """
+        執行行程規劃流程
+
+        輸入參數:
+            locations (List[Dict]): 地點資料列表
+            requirement (Dict): 使用者需求資料
+
+        回傳:
+            List[Dict]: 規劃後的行程列表
+        """
+        start_time = time.time()
+
+        try:
+            # 步驟1: 資料驗證
+            validated_locations = self.validate_locations(locations)
+            validated_requirement = self.validate_requirement(requirement)
+
+            # 步驟2: 初始化地點資料
+            self.planner.initialize_locations(validated_locations)
+
+            # 步驟3: 執行規劃
+            itinerary = self.planner.plan(
+                start_time=validated_requirement.start_time,
+                end_time=validated_requirement.end_time,
+                travel_mode=validated_requirement.transport_mode
+            )
+
+            self.execution_time = time.time() - start_time
+            return itinerary
+
+        except Exception as e:
+            print(f"行程規劃錯誤: {str(e)}")
+            raise
+
+    def get_execution_time(self) -> float:
+        """取得執行時間（秒）"""
+        return self.execution_time
+
 
 def main():
     """
     主程式進入點
-    執行順序：建立規劃器 -> 初始化地點 -> 規劃行程 -> 輸出結果
+    用於測試行程規劃系統
     """
-    # 記錄開始時間，用於計算總執行時間
-    total_start_time = time.time()
+    # 測試資料
+    test_requirement = {
+        "start_time": "09:00",
+        "end_time": "18:00",
+        "start_point": "台北車站",
+        "end_point": "台北車站",
+        "transport_mode": "transit",
+        "distance_threshold": 30,
+        "breakfast_time": "none",
+        "lunch_time": "12:00",
+        "dinner_time": "18:00",
+        "budget": "none",
+        "date": "12-25"
+    }
 
-    # 建立行程規劃器實例
-    planner = TripPlanner()
-    # 測試案例們
-    test_cases = [
-        {
-            "name": "情境1：開車 指定起終點",
-            "start_time": "09:00",
-            "end_time": "20:00",
-            "travel_mode": "開車",
-            "custom_start": "24.95364,121.223017",
-            "custom_end": "行天宮"
-        },
-        # {
-        #     "name": "情境2：大眾運輸 不指定起終點",
-        #     "start_time": "08:00",
-        #     "end_time": "18:00",
-        #     "travel_mode": "大眾運輸",
-        #     "custom_start": None,
-        #     "custom_end": None
-        # }
-    ]
-    for case in test_cases:
-        print(f"\n=== 測試 {case['name']} ===")
-        try:
-            # 初始化地點資料
-            # 輸入：
-            #   - TEST_LOCATIONS: 景點清單，格式為 List[Dict]
-            #     每個景點需包含：name, lat, lon, duration, label, hours 等資訊
-            planner.initialize_locations(TEST_LOCATIONS)
+    try:
+        # 建立行程規劃系統
+        system = TripPlanningSystem()
 
-            # 執行行程規劃
-            # 輸入參數說明：
-            #   - start_time: 開始時間 (格式: 'HH:MM')
-            #   - end_time: 結束時間 (格式: 'HH:MM')
-            #   - travel_mode: 交通方式 ("大眾運輸", "開車", "騎自行車", "步行")
-            #   - custom_start: 自訂起點 (Dict，包含 name, lat, lon 等資訊)
-            #   - custom_end: 自訂終點 (Dict，包含 name, lat, lon 等資訊)
-            # 輸出：
-            #   - itinerary: List[Dict] 格式的行程清單
-            itinerary = planner.plan(
-                start_time=case["start_time"],
-                end_time=case["end_time"],
-                travel_mode=case["travel_mode"],
-                custom_start=case["custom_start"],
-                custom_end=case["custom_end"]
-            )
+        # 執行規劃
+        result = system.plan_trip(
+            locations=TEST_LOCATIONS,
+            requirement=test_requirement
+        )
 
-            print("\n=== 一般格式輸出 ===")
-            # 轉換行程格式並印出
-            # 輸入：itinerary (List[Dict])
-            # 輸出：TripPlan 物件，包含完整行程資訊
-            trip_plan = convert_itinerary_to_trip_plan(itinerary)
-            trip_plan.print_itinerary()
+        # 輸出結果
+        print("\n=== 行程規劃結果 ===")
+        for i, plan in enumerate(result, 1):
+            print(f"\n[地點 {plan['step']}]")
+            print(f"名稱: {plan['name']}")
+            print(f"時間: {plan['start_time']} - {plan['end_time']}")
+            print(f"停留: {plan['duration']}分鐘")
+            print(f"交通: {plan['transport_details']}"
+                  f"({plan['travel_time']:.1f}分鐘)")
 
-            print("\n=== LINE 格式輸出 ===")
-            # 轉換成 LINE 訊息格式
-            # 輸入：itinerary (List[Dict])
-            # 輸出：str，格式化的 LINE 訊息文字
-            line_message = LineFormatter.format_trip_to_line_message(itinerary)
-            print(line_message)
+        print(f"\n規劃耗時: {system.get_execution_time():.2f}秒")
 
-            # 計算並顯示總執行時間
-            total_execution_time = time.time() - total_start_time
-            print(f"\n總執行時間：{total_execution_time:.2f}秒")
-
-        except Exception as e:
-            print(f"發生錯誤: {str(e)}")
+    except Exception as e:
+        print(f"\n發生錯誤: {str(e)}")
+        raise
 
 
 if __name__ == "__main__":

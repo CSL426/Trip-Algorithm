@@ -1,9 +1,12 @@
+# src\core\planners\advanced_planner.py
+
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from .base_planner import BaseTripPlanner
 from .location_evaluator import LocationEvaluator
 from .business_hours import BusinessHours
 from src.core.utils import calculate_travel_time, calculate_distance
+from src.core.models import PlaceDetail
 
 
 class AdvancedTripPlanner(BaseTripPlanner):
@@ -14,7 +17,7 @@ class AdvancedTripPlanner(BaseTripPlanner):
                  custom_start=None, custom_end=None):
         """
         初始化行程規劃器
-
+        
         參數：
             start_time (str): 開始時間，格式為 'HH:MM'
             end_time (str): 結束時間，格式為 'HH:MM'
@@ -48,42 +51,8 @@ class AdvancedTripPlanner(BaseTripPlanner):
         self.available_locations = []
         self.selected_locations = []
 
-    def _calculate_time_priority(self, current_time: datetime) -> float:
-        """計算時間優先度，用於調整景點選擇策略
-
-        根據當前時間返回優先度係數：
-        - 早上時段（8-11點）：偏好主要景點
-        - 用餐時段：偏好餐廳
-        - 下午時段：平衡選擇
-        - 傍晚時段：偏好較近的景點
-        """
-        hour = current_time.hour
-
-        if 8 <= hour < 11:
-            return 1.5  # 早上偏好主要景點
-        elif (11 <= hour < 14) or (17 <= hour < 19):
-            # 用餐時段
-            return 2.0 if not (self.had_lunch and self.had_dinner) else 0.5
-        elif 14 <= hour < 17:
-            return 1.0  # 下午平衡選擇
-        else:
-            return 0.7  # 傍晚偏好近距離
-
-    def _get_adjusted_distance_threshold(self, location_type: str,
-                                         current_time: datetime) -> float:
-        """根據地點類型和時間調整可接受的距離閾值"""
-        base_threshold = self.distance_threshold
-        time_factor = self._calculate_time_priority(current_time)
-
-        if location_type in ['景點', '公園']:
-            return base_threshold * 1.5 * time_factor
-        elif location_type in ['小吃', '餐廳']:
-            return base_threshold * 0.8 * time_factor
-        else:
-            return base_threshold * time_factor
-
-    def _filter_nearby_locations(self, current_location: Dict,
-                                 current_time: datetime) -> List[Dict]:
+    def _filter_nearby_locations(self, current_location: PlaceDetail,
+                                 current_time: datetime) -> List[PlaceDetail]:
         """篩選附近的地點，考慮時間和類型因素"""
         if not current_location or not self.available_locations:
             return []
@@ -92,36 +61,38 @@ class AdvancedTripPlanner(BaseTripPlanner):
 
         for location in self.available_locations:
             distance = calculate_distance(
-                current_location['lat'],
-                current_location['lon'],
-                location['lat'],
-                location['lon']
+                current_location.lat,
+                current_location.lon,
+                location.lat,
+                location.lon
             )
 
             adjusted_threshold = self._get_adjusted_distance_threshold(
-                location.get('label', ''), current_time)
+                location.label, current_time)
 
             if distance <= adjusted_threshold:
                 nearby_locations.append(location)
 
         return nearby_locations
 
-    def _estimate_total_trip_time(self, current_location: Dict,
-                                  potential_location: Dict,
+    def _estimate_total_trip_time(self, current_location: PlaceDetail,
+                                  potential_location: PlaceDetail,
                                   current_time: datetime) -> float:
         """估算加入新地點後的總行程時間（分鐘）"""
         # 計算到下一個地點的交通時間
         to_next = calculate_travel_time(
-            current_location, potential_location, self.travel_mode)
+            {"lat": current_location.lat, "lon": current_location.lon, "name": current_location.name},
+            {"lat": potential_location.lat, "lon": potential_location.lon, "name": potential_location.name},
+            self.travel_mode)
         next_travel_time = to_next['time'].total_seconds() / 60
 
         # 計算在該地點的停留時間
-        stay_duration = potential_location.get('duration', 0)
+        stay_duration = potential_location.duration_min
 
         return next_travel_time + stay_duration
 
-    def _has_enough_time(self, current_location: Dict,
-                         potential_location: Dict,
+    def _has_enough_time(self, current_location: PlaceDetail,
+                         potential_location: PlaceDetail,
                          current_time: datetime) -> bool:
         """檢查是否有足夠時間訪問新地點"""
         # 計算需要的總時間
@@ -135,8 +106,8 @@ class AdvancedTripPlanner(BaseTripPlanner):
         # 預留 30 分鐘緩衝時間
         return remaining_minutes >= (total_needed_time + 30)
 
-    def _calculate_location_score(self, location: Dict,
-                                  current_location: Dict,
+    def _calculate_location_score(self, location: PlaceDetail,
+                                  current_location: PlaceDetail,
                                   travel_time: float,
                                   current_time: datetime) -> float:
         """計算地點的綜合評分"""
@@ -145,14 +116,14 @@ class AdvancedTripPlanner(BaseTripPlanner):
 
         # 基礎分數計算
         distance = calculate_distance(
-            current_location['lat'],
-            current_location['lon'],
-            location['lat'],
-            location['lon']
+            current_location.lat,
+            current_location.lon,
+            location.lat,
+            location.lon
         )
 
         # 停留時間效率
-        duration = location.get('duration', 0)
+        duration = location.duration_min
         base_efficiency = duration / (max(distance, 0.1) * max(travel_time, 1))
 
         # 時間調整係數
@@ -160,10 +131,10 @@ class AdvancedTripPlanner(BaseTripPlanner):
 
         # 根據地點類型調整
         type_factor = 1.0
-        if location.get('label') in ['景點', '公園']:
+        if location.label in ['景點', '公園']:
             if 9 <= current_time.hour <= 16:
                 type_factor = 1.5
-        elif location.get('label') in ['餐廳', '小吃']:
+        elif location.label in ['餐廳', '小吃']:
             if self._is_meal_time(current_time):
                 type_factor = 2.0
             else:
@@ -174,8 +145,8 @@ class AdvancedTripPlanner(BaseTripPlanner):
 
         return final_score
 
-    def _find_best_next_location(self, current_location: Dict,
-                                 current_time: datetime) -> Optional[Dict]:
+    def _find_best_next_location(self, current_location: PlaceDetail,
+                                 current_time: datetime) -> Optional[PlaceDetail]:
         """尋找下一個最佳地點"""
         best_location = None
         best_score = float('-inf')
@@ -190,15 +161,17 @@ class AdvancedTripPlanner(BaseTripPlanner):
 
             # 計算交通時間
             travel_details = calculate_travel_time(
-                current_location, location, self.travel_mode)
+                {"lat": current_location.lat, "lon": current_location.lon, "name": current_location.name},
+                {"lat": location.lat, "lon": location.lon, "name": location.name},
+                self.travel_mode)
             travel_time = travel_details['time'].total_seconds() / 60
 
             # 計算到達時間
             arrival_time = current_time + timedelta(minutes=int(travel_time))
 
             # 檢查營業時間
-            hours_handler = BusinessHours(location['hours'])
-            if not hours_handler.is_open_at(arrival_time):
+            if not location.is_open_at(arrival_time.weekday() + 1, 
+                                     arrival_time.strftime('%H:%M')):
                 continue
 
             # 計算地點評分
@@ -212,108 +185,116 @@ class AdvancedTripPlanner(BaseTripPlanner):
         return best_location
 
     def _is_meal_time(self, current_time: datetime) -> bool:
-        """判斷是否為用餐時間"""
+        """檢查是否為用餐時間"""
         hour = current_time.hour
+        return (11 <= hour <= 14) or (17 <= hour <= 20)
 
-        if not self.had_lunch and 11 <= hour <= 13:
-            return True
+    def _calculate_time_priority(self, current_time: datetime) -> float:
+        """計算時間優先度"""
+        hour = current_time.hour
+        if self._is_meal_time(current_time):
+            return 1.5
+        return 1.0
 
-        if not self.had_dinner and 17 <= hour <= 19:
-            return True
+    def _get_adjusted_distance_threshold(self, location_type: str, current_time: datetime) -> float:
+        """取得根據地點類型調整後的距離閾值"""
+        base_threshold = self.distance_threshold
 
-        return False
-
-    def _update_meal_status(self, location: Dict, time: datetime):
-        """更新用餐狀態"""
-        if location.get('label') in ['餐廳', '小吃', '夜市']:
-            hour = time.hour
-            if 11 <= hour <= 13:
-                self.had_lunch = True
-            elif 17 <= hour <= 19:
-                self.had_dinner = True
+        # 根據地點類型調整
+        if location_type in ['景點', '公園']:
+            return base_threshold * 1.2
+        elif location_type in ['餐廳', '小吃']:
+            if self._is_meal_time(current_time):
+                return base_threshold * 0.8
+            return base_threshold
+        
+        return base_threshold
 
     def plan(self) -> List[Dict[str, Any]]:
-        """執行行程規劃"""
+        """
+        執行行程規劃
+        
+        回傳:
+            List[Dict[str, Any]]: 規劃好的行程列表
+        """
+        itinerary = []
         current_time = self.start_datetime
         current_location = self.start_location
-
-        # 初始化行程清單
-        itinerary = []
 
         # 加入起點
         itinerary.append({
             'step': 0,
-            'name': current_location['name'],
+            'name': current_location.name,
             'start_time': current_time.strftime('%H:%M'),
             'end_time': current_time.strftime('%H:%M'),
             'duration': 0,
-            'travel_time': 0,
+            'hours': '00:00-24:00',
             'transport_details': '起點',
-            'hours': current_location.get('hours', '24小時開放')
+            'travel_time': 0
         })
 
-        # 主要規劃循環
-        while self.available_locations and current_time < self.end_datetime:
-            best_location = self._find_best_next_location(
-                current_location, current_time)
-
-            if not best_location:
+        step = 1
+        while current_time < self.end_datetime:
+            # 尋找下一個最佳地點
+            next_location = self._find_best_next_location(current_location, current_time)
+            if not next_location:
                 break
 
-            # 計算交通資訊
+            # 計算交通時間
             travel_details = calculate_travel_time(
-                current_location, best_location, self.travel_mode)
+                {"lat": current_location.lat, "lon": current_location.lon, "name": current_location.name},
+                {"lat": next_location.lat, "lon": next_location.lon, "name": next_location.name},
+                self.travel_mode
+            )
             travel_time = travel_details['time'].total_seconds() / 60
 
             # 更新時間
             arrival_time = current_time + timedelta(minutes=int(travel_time))
-            end_time = arrival_time + \
-                timedelta(minutes=best_location['duration'])
+            departure_time = arrival_time + timedelta(minutes=next_location.duration_min)
 
-            # 檢查是否超過結束時間
-            if end_time > self.end_datetime:
+            # 檢查是否超出結束時間
+            if departure_time > self.end_datetime:
                 break
-
-            # 更新用餐狀態
-            self._update_meal_status(best_location, arrival_time)
 
             # 加入行程
             itinerary.append({
-                'step': len(itinerary),
-                'name': best_location['name'],
+                'step': step,
+                'name': next_location.name,
                 'start_time': arrival_time.strftime('%H:%M'),
-                'end_time': end_time.strftime('%H:%M'),
-                'duration': best_location['duration'],
-                'travel_time': travel_time,
+                'end_time': departure_time.strftime('%H:%M'),
+                'duration': next_location.duration_min,
+                'hours': str(next_location.hours),
                 'transport_details': travel_details['transport_details'],
-                'hours': best_location.get('hours', '24小時開放')
+                'travel_time': travel_time,
+                'is_meal': next_location.label in ['餐廳', '小吃']
             })
 
-            # 更新狀態
-            self.selected_locations.append(best_location)
-            self.available_locations.remove(best_location)
-            current_location = best_location
-            current_time = end_time
+            # 更新當前狀態
+            current_location = next_location
+            current_time = departure_time
+            step += 1
 
         # 加入終點
-        if current_location != self.end_location:
-            travel_details = calculate_travel_time(
-                current_location, self.end_location, self.travel_mode)
-            travel_time = travel_details['time'].total_seconds() / 60
-            arrival_time = current_time + timedelta(minutes=int(travel_time))
-
-            if arrival_time > self.end_datetime:
-                arrival_time = self.end_datetime
+        if current_time < self.end_datetime:
+            # 計算回到終點的交通時間
+            final_travel = calculate_travel_time(
+                {"lat": current_location.lat, "lon": current_location.lon, "name": current_location.name},
+                {"lat": self.end_location.lat, "lon": self.end_location.lon, 
+                 "name": self.end_location.name},
+                self.travel_mode
+            )
+            final_time = current_time + timedelta(
+                seconds=final_travel['time'].total_seconds())
 
             itinerary.append({
-                'step': len(itinerary),
-                'name': self.end_location['name'],
-                'start_time': arrival_time.strftime('%H:%M'),
-                'end_time': arrival_time.strftime('%H:%M'),
+                'step': step,
+                'name': self.end_location.name,
+                'start_time': final_time.strftime('%H:%M'),
+                'end_time': final_time.strftime('%H:%M'),
                 'duration': 0,
-                'travel_time': travel_time,
-                'transport_details': travel_details['transport_details'],
-                'hours': self.end_location.get('hours', '24小時開放')
+                'hours': '00:00-24:00',
+                'transport_details': final_travel['transport_details'],
+                'travel_time': final_travel['time'].total_seconds() / 60
             })
 
         return itinerary

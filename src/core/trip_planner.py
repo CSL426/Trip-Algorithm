@@ -3,7 +3,7 @@
 from typing import List, Dict, Union, Optional
 from datetime import datetime
 from src.core.models import PlaceDetail
-from src.core.test_data import TEST_LOCATIONS, TEST_CUSTOM_START
+from tests.data.test_data import TEST_LOCATIONS, TEST_CUSTOM_START
 from src.core.planners.advanced_planner import AdvancedTripPlanner
 from src.core.utils import calculate_travel_time
 

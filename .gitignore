@@ -6,6 +6,7 @@
 .pytest_cache/
 
 # Python
+del_pycache.py
 __pycache__/
 *.py[cod]
 *$py.class

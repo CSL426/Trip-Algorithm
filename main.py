@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 
 from src.core.trip_planner import TripPlanner
 from src.core.models import TripRequirement, PlaceDetail
-from src.core.test_data import TEST_LOCATIONS
+from tests.data.test_data import TEST_LOCATIONS
 
 
 class TripPlanningSystem:

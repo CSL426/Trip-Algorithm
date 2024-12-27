@@ -13,13 +13,13 @@
 - 自動安排合適的用餐時間
 
 ### 時間管理
-- 全天候動態規劃（支援 00:00-23:59）
+- 全天候動態規劃)支援 00:00-23:59)
 - 自動考慮景點營業時間
 - 智能分配景點停留時間
 - 預留適當的交通時間緩衝
 
 ### 交通整合
-- 支援多種交通方式（大眾運輸、開車、步行）
+- 支援多種交通方式)大眾運輸、開車、步行)
 - 即時路線規劃與時間估算
 - 整合 Google Maps 路線資訊
 - 自動計算轉乘建議
@@ -35,7 +35,7 @@
 ### 系統需求
 - Python 3.9 或以上版本
 - Poetry 套件管理工具
-- 穩定的網路連線（需要存取 Google Maps API）
+- 穩定的網路連線)需要存取 Google Maps API)
 
 ### 安裝步驟
 
@@ -73,7 +73,7 @@ locations = [
         'rating': 4.6,
         'lat': 25.0339808,
         'lon': 121.561964,
-        'duration': 150,  # 參訪時間（分鐘）
+        'duration': 150,  # 參訪時間)分鐘)
         'label': '景點',
         'hours': {  # 營業時間
             1: [{'start': '09:00', 'end': '22:00'}],
@@ -108,7 +108,7 @@ itinerary = planner.plan(
     start_time='09:00',
     end_time='18:00',
     travel_mode='driving',     # 交通方式：driving, transit, walking
-    distance_threshold=30,     # 最大可接受距離（公里）
+    distance_threshold=30,     # 最大可接受距離)公里)
     efficiency_threshold=0.1,  # 效率評分門檻
     custom_start=start_point,  # 自訂起點
     custom_end=end_point      # 自訂終點

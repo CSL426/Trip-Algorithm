@@ -19,8 +19,8 @@ API_CALL_COUNT = 0
 
 
 def calculate_distance(lat1, lon1, lat2, lon2):
-    """計算兩個地理座標點之間的直線距離（公里）"""
-    R = 6371  # 地球半徑（公里）
+    """計算兩個地理座標點之間的直線距離)公里)"""
+    R = 6371  # 地球半徑)公里)
     lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
     dlat = lat2 - lat1
     dlon = lon2 - lon1
@@ -96,7 +96,7 @@ def calculate_travel_time(current_location, destination, travel_mode='transit'):
         data = response.json()
 
         if data['status'] == 'OK' and data['rows'][0]['elements'][0]['status'] == 'OK':
-            # 獲取行駛時間（以秒為單位）
+            # 獲取行駛時間)以秒為單位)
             duration_seconds = data['rows'][0]['elements'][0]['duration']['value']
             transport_details = get_transport_details(travel_mode, data)
             return {

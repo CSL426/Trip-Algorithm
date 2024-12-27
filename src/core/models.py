@@ -1,8 +1,8 @@
 # src\core\models.py
 
-from typing import List, Dict, Union, Literal, Optional
+from typing import List, Dict, Union, Literal, Optional, Tuple
 from pydantic import BaseModel, Field, field_validator
-from datetime import datetime
+from datetime import datetime, time, timedelta
 import re
 
 
@@ -47,8 +47,8 @@ class PlaceDetail(BaseModel):
         rating (float): 評分 (0.0-5.0)
         lat (float): 緯度
         lon (float): 經度
-        duration_min (int): 建議停留時間（分鐘）
-        label (str): 地點類型標籤（如：景點、餐廳）
+        duration_min (int): 建議停留時間(分鐘)
+        label (str): 地點類型標籤(如：景點、餐廳)
         hours (Dict): 營業時間，格式為 {weekday: [{'start': 'HH:MM', 'end': 'HH:MM'}]}
         url (str): 地點相關連結
     """
@@ -109,45 +109,114 @@ class PlaceDetail(BaseModel):
                 # 跨日營業無需額外處理，is_open_at 會處理跨日邏輯
         return v
 
-    def is_open_at(self, day: int, time: str) -> bool:
+    def is_open_at(self, day_or_datetime, time: str = None) -> bool:
         """
-        檢查特定時間是否營業
-
+        檢查指定時間是否在營業時間內
+        
+        支援兩種呼叫方式：
+        1. is_open_at(datetime) -> 使用 datetime 物件
+        2. is_open_at(day, time) -> 使用日期數字(1-7)和時間字串('HH:MM')
+        
         參數:
-            day (int): 1-7 代表星期幾
-            time (str): 時間，格式 HH:MM
-
-        返回:
+            day_or_datetime: datetime 物件或整數(1-7代表星期幾)
+            time: 當 day_or_datetime 為整數時，需提供時間字串('HH:MM')
+            
+        回傳:
             bool: True 表示營業中，False 表示未營業
-
-        支援跨日營業判斷，例如：
-        - 17:00-00:00：檢查時間在 17:00 之後即為營業中
-        - 23:00-04:00：檢查時間在 23:00 之後或 04:00 之前為營業中
         """
-        if day not in self.hours:
+        # 根據參數類型決定處理方式
+        if isinstance(day_or_datetime, datetime):
+            check_datetime = day_or_datetime
+            weekday = check_datetime.weekday() + 1
+            check_time = check_datetime.time()
+        else:
+            if time is None:
+                raise ValueError("使用日期數字時必須提供時間字串")
+            weekday = day_or_datetime
+            check_time = datetime.strptime(time, '%H:%M').time()
+
+        daily_hours = self.hours.get(weekday, [])
+        if not daily_hours or daily_hours[0] is None:
             return False
-
-        time_slots = self.hours[day]
-        if not time_slots or time_slots[0] is None:
-            return False
-
-        check_time = datetime.strptime(time, '%H:%M').time()
-
-        for slot in time_slots:
-            if slot is None:
+            
+        # 檢查每個營業時段
+        for period in daily_hours:
+            if period is None:
                 continue
-            start = datetime.strptime(slot['start'], '%H:%M').time()
-            end = datetime.strptime(slot['end'], '%H:%M').time()
-
-            # 處理跨日營業情況
-            if start > end:  # 跨日營業
-                if check_time >= start or check_time <= end:
+                
+            start_time = datetime.strptime(period['start'], '%H:%M').time()
+            end_time = datetime.strptime(period['end'], '%H:%M').time()
+            
+            # 跨日營業的情況
+            if start_time > end_time:
+                if check_time >= start_time or check_time <= end_time:
                     return True
-            else:  # 當日營業
-                if start <= check_time <= end:
+            # 一般營業時間
+            else:
+                if start_time <= check_time <= end_time:
                     return True
-
+                    
         return False
+
+    def _is_time_in_period(self, check_time: time, period: Dict[str, str]) -> bool:
+        """
+        檢查時間是否在特定時段內
+
+        參數：
+            check_time: 要檢查的時間
+            period: 營業時段，包含 start 和 end
+
+        回傳：
+            bool: True 表示在時段內，False 表示不在
+        """
+        start = datetime.strptime(period['start'], '%H:%M').time()
+        end = datetime.strptime(period['end'], '%H:%M').time()
+
+        # 處理跨日營業的情況
+        if start > end:  # 例如 23:00-04:00
+            return check_time >= start or check_time <= end
+        return start <= check_time <= end
+
+    def get_next_open_period(self, check_datetime: datetime) -> Optional[Tuple[time, time]]:
+        """
+        取得下一個營業時段
+
+        參數：
+            check_datetime: 當前時間
+
+        回傳：
+            Optional[Tuple[time, time]]: 下一個營業時段的開始和結束時間，若無則為 None
+        """
+        weekday = check_datetime.weekday() + 1
+        check_time = check_datetime.time()
+
+        # 檢查當天剩餘時段
+        daily_hours = self.hours.get(weekday, [])
+        for period in daily_hours:
+            if period is None:
+                continue
+            start_time = datetime.strptime(period['start'], '%H:%M').time()
+            if start_time >= check_time:
+                end_time = datetime.strptime(period['end'], '%H:%M').time()
+                return start_time, end_time
+        return None
+
+    def can_visit(self, start_datetime: datetime, duration: int) -> bool:
+        """
+        檢查是否可以在指定時間進行參訪
+
+        參數：
+            start_datetime: 預計開始參訪的時間
+            duration: 預計停留時間（分鐘)
+
+        回傳：
+            bool: True 表示可以參訪，False 表示不行
+        """
+        if not self.is_open_at(start_datetime):
+            return False
+
+        end_datetime = start_datetime + timedelta(minutes=duration)
+        return self.is_open_at(end_datetime)
 
 
 class Transport(BaseModel):
@@ -156,7 +225,7 @@ class Transport(BaseModel):
 
     屬性:
         mode (str): 交通模式 (transit/driving/bicycling/walking)
-        time (int): 交通所需時間（分鐘）
+        time (int): 交通所需時間(分鐘)
         period (str): 交通時段，格式 "HH:MM-HH:MM"
     """
     mode: Literal["transit", "driving", "bicycling", "walking"]
@@ -172,7 +241,7 @@ class TripPlan(BaseModel):
         name (str): 地點名稱
         start_time (str): 開始時間，格式 HH:MM
         end_time (str): 結束時間，格式 HH:MM
-        duration (int): 停留時間（分鐘）
+        duration (int): 停留時間(分鐘)
         hours (str): 營業時間資訊
         transport (Transport): 交通資訊
     """
@@ -198,7 +267,7 @@ class TripRequirement(BaseModel):
         start_point (str): 起點名稱或座標
         end_point (str): 終點名稱或座標
         transport_mode (str): 交通方式
-        distance_threshold (int): 可接受的最大距離（公里）
+        distance_threshold (int): 可接受的最大距離(公里)
         breakfast_time (str): 早餐時間，格式 HH:MM 或 "none"
         lunch_time (str): 午餐時間，格式 HH:MM 或 "none"
         dinner_time (str): 晚餐時間，格式 HH:MM 或 "none"

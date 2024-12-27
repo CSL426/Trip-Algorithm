@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from .base_planner import BaseTripPlanner
 from .location_evaluator import LocationEvaluator
-from .business_hours import BusinessHours
 from src.core.utils import calculate_travel_time, calculate_distance
 from src.core.models import PlaceDetail
 
@@ -17,12 +16,12 @@ class AdvancedTripPlanner(BaseTripPlanner):
                  custom_start=None, custom_end=None):
         """
         初始化行程規劃器
-        
+
         參數：
             start_time (str): 開始時間，格式為 'HH:MM'
             end_time (str): 結束時間，格式為 'HH:MM'
             travel_mode (str): 交通方式，可選 'transit', 'driving', 'walking', 'bicycling'
-            distance_threshold (float): 可接受的最大距離（公里）
+            distance_threshold (float): 可接受的最大距離)公里)
             efficiency_threshold (float): 最低效率閾值
             custom_start (Dict): 自訂起點資訊
             custom_end (Dict): 自訂終點資訊
@@ -78,11 +77,13 @@ class AdvancedTripPlanner(BaseTripPlanner):
     def _estimate_total_trip_time(self, current_location: PlaceDetail,
                                   potential_location: PlaceDetail,
                                   current_time: datetime) -> float:
-        """估算加入新地點後的總行程時間（分鐘）"""
+        """估算加入新地點後的總行程時間)分鐘)"""
         # 計算到下一個地點的交通時間
         to_next = calculate_travel_time(
-            {"lat": current_location.lat, "lon": current_location.lon, "name": current_location.name},
-            {"lat": potential_location.lat, "lon": potential_location.lon, "name": potential_location.name},
+            {"lat": current_location.lat, "lon": current_location.lon,
+                "name": current_location.name},
+            {"lat": potential_location.lat, "lon": potential_location.lon,
+                "name": potential_location.name},
             self.travel_mode)
         next_travel_time = to_next['time'].total_seconds() / 60
 
@@ -99,7 +100,7 @@ class AdvancedTripPlanner(BaseTripPlanner):
         total_needed_time = self._estimate_total_trip_time(
             current_location, potential_location, current_time)
 
-        # 計算剩餘可用時間（分鐘）
+        # 計算剩餘可用時間)分鐘)
         remaining_minutes = (self.end_datetime -
                              current_time).total_seconds() / 60
 
@@ -161,7 +162,8 @@ class AdvancedTripPlanner(BaseTripPlanner):
 
             # 計算交通時間
             travel_details = calculate_travel_time(
-                {"lat": current_location.lat, "lon": current_location.lon, "name": current_location.name},
+                {"lat": current_location.lat, "lon": current_location.lon,
+                    "name": current_location.name},
                 {"lat": location.lat, "lon": location.lon, "name": location.name},
                 self.travel_mode)
             travel_time = travel_details['time'].total_seconds() / 60
@@ -170,8 +172,7 @@ class AdvancedTripPlanner(BaseTripPlanner):
             arrival_time = current_time + timedelta(minutes=int(travel_time))
 
             # 檢查營業時間
-            if not location.is_open_at(arrival_time.weekday() + 1, 
-                                     arrival_time.strftime('%H:%M')):
+            if not location.is_open_at(arrival_time):
                 continue
 
             # 計算地點評分
@@ -207,13 +208,13 @@ class AdvancedTripPlanner(BaseTripPlanner):
             if self._is_meal_time(current_time):
                 return base_threshold * 0.8
             return base_threshold
-        
+
         return base_threshold
 
     def plan(self) -> List[Dict[str, Any]]:
         """
         執行行程規劃
-        
+
         回傳:
             List[Dict[str, Any]]: 規劃好的行程列表
         """
@@ -236,21 +237,25 @@ class AdvancedTripPlanner(BaseTripPlanner):
         step = 1
         while current_time < self.end_datetime:
             # 尋找下一個最佳地點
-            next_location = self._find_best_next_location(current_location, current_time)
+            next_location = self._find_best_next_location(
+                current_location, current_time)
             if not next_location:
                 break
 
             # 計算交通時間
             travel_details = calculate_travel_time(
-                {"lat": current_location.lat, "lon": current_location.lon, "name": current_location.name},
-                {"lat": next_location.lat, "lon": next_location.lon, "name": next_location.name},
+                {"lat": current_location.lat, "lon": current_location.lon,
+                    "name": current_location.name},
+                {"lat": next_location.lat, "lon": next_location.lon,
+                    "name": next_location.name},
                 self.travel_mode
             )
             travel_time = travel_details['time'].total_seconds() / 60
 
             # 更新時間
             arrival_time = current_time + timedelta(minutes=int(travel_time))
-            departure_time = arrival_time + timedelta(minutes=next_location.duration_min)
+            departure_time = arrival_time + \
+                timedelta(minutes=next_location.duration_min)
 
             # 檢查是否超出結束時間
             if departure_time > self.end_datetime:
@@ -278,8 +283,9 @@ class AdvancedTripPlanner(BaseTripPlanner):
         if current_time < self.end_datetime:
             # 計算回到終點的交通時間
             final_travel = calculate_travel_time(
-                {"lat": current_location.lat, "lon": current_location.lon, "name": current_location.name},
-                {"lat": self.end_location.lat, "lon": self.end_location.lon, 
+                {"lat": current_location.lat, "lon": current_location.lon,
+                    "name": current_location.name},
+                {"lat": self.end_location.lat, "lon": self.end_location.lon,
                  "name": self.end_location.name},
                 self.travel_mode
             )

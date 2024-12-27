@@ -25,32 +25,19 @@ class TripPlanningSystem:
         """
         驗證並轉換地點資料格式
 
-        輸入參數:
-            locations (List[Dict]): 原始地點資料列表
-                格式: [
-                    {
-                        "name": str,          # 地點名稱
-                        "rating": float,      # 評分 (0-5)
-                        "lat": float,         # 緯度
-                        "lon": float,         # 經度
-                        "duration_min": int,  # 建議停留時間(分鐘)
-                        "label": str,         # 地點類型
-                        "hours": dict         # 營業時間
-                    },
-                    ...
-                ]
+        參數:
+            locations: 原始地點資料列表
 
         回傳:
             List[PlaceDetail]: 驗證後的地點資料列表
-
-        異常:
-            ValueError: 當資料格式不正確時
         """
         validated_locations = []
         for loc in locations:
             try:
-                place = PlaceDetail(**loc)
-                validated_locations.append(place)
+                if isinstance(loc, PlaceDetail):
+                    validated_locations.append(loc)
+                else:
+                    validated_locations.append(PlaceDetail(**loc))
             except Exception as e:
                 print(f"地點資料驗證錯誤 ({loc.get('name', 'Unknown')}): {str(e)}")
                 raise
@@ -121,7 +108,7 @@ class TripPlanningSystem:
             raise
 
     def get_execution_time(self) -> float:
-        """取得執行時間（秒）"""
+        """取得執行時間(秒)"""
         return self.execution_time
 
 

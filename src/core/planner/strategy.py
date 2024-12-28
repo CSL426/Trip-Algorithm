@@ -173,78 +173,118 @@ class PlanningStrategy:
     def _find_best_next_location(self, current_location: PlaceDetail,
                                  available_locations: List[PlaceDetail],
                                  current_time: datetime) -> Optional[PlaceDetail]:
-        """修改原本的函式，加入用餐時間的考量"""
-        best_location = None
-        best_score = float('-inf')
+        """
+        尋找下一個最佳地點
 
+        輸入參數:
+            current_location: 目前位置的 PlaceDetail 物件
+            available_locations: 可選擇的地點列表
+            current_time: 當前時間
+
+        回傳:
+            PlaceDetail 物件或 None: 找到的最佳下一個地點，如果沒有合適的地點則回傳 None
+        """
         # 判斷是否為用餐時間
-        is_lunch_time = False
-        is_dinner_time = False
-
-        # 從需求中取得用餐時間
         lunch_time_str = self.requirement.get('lunch_time')
         dinner_time_str = self.requirement.get('dinner_time')
 
+        # 檢查是否為午餐時間
         if lunch_time_str and lunch_time_str != 'none':
             lunch_time = datetime.strptime(lunch_time_str, '%H:%M').replace(
                 year=current_time.year,
                 month=current_time.month,
                 day=current_time.day
             )
-            # 使用一般時間範圍來判斷是否在用餐時段
-            earliest_lunch, latest_lunch = self.get_general_time_range(
-                lunch_time)
-            is_lunch_time = earliest_lunch <= current_time <= latest_lunch
+            # 如果是午餐時間，優先選擇午餐地點
+            if current_time.hour == lunch_time.hour:
+                lunch_spots = [
+                    loc for loc in available_locations if loc.period == 'lunch']
+                if lunch_spots:
+                    # 從午餐地點中選擇評分最高的
+                    self.evaluator.current_time = current_time
+                    best_lunch = None
+                    best_lunch_score = float('-inf')
 
+                    for spot in lunch_spots:
+                        travel_info = self._calculate_travel_info(
+                            current_location, spot)
+                        arrival_time = current_time + \
+                            timedelta(minutes=travel_info['time'])
+
+                        if not self._has_enough_time(spot, arrival_time):
+                            continue
+
+                        score = self.evaluator.calculate_score(
+                            spot,
+                            current_location,
+                            travel_info['time'],
+                            is_meal_time=True
+                        )
+
+                        if score > best_lunch_score:
+                            best_lunch_score = score
+                            best_lunch = spot
+
+                    if best_lunch:
+                        return best_lunch
+
+        # 檢查是否為晚餐時間 (邏輯同午餐)
         if dinner_time_str and dinner_time_str != 'none':
             dinner_time = datetime.strptime(dinner_time_str, '%H:%M').replace(
                 year=current_time.year,
                 month=current_time.month,
                 day=current_time.day
             )
-            earliest_dinner, latest_dinner = self.get_general_time_range(
-                dinner_time)
-            is_dinner_time = earliest_dinner <= current_time <= latest_dinner
+            if current_time.hour == dinner_time.hour:
+                dinner_spots = [
+                    loc for loc in available_locations if loc.period == 'dinner']
+                if dinner_spots:
+                    self.evaluator.current_time = current_time
+                    best_dinner = None
+                    best_dinner_score = float('-inf')
 
-        # 如果是用餐時間，只考慮餐廳
-        if is_lunch_time or is_dinner_time:
-            available_locations = [loc for loc in available_locations
-                                   if loc.label in ['餐廳', '小吃', '夜市']]
-            if not available_locations:
-                return None
+                    for spot in dinner_spots:
+                        travel_info = self._calculate_travel_info(
+                            current_location, spot)
+                        arrival_time = current_time + \
+                            timedelta(minutes=travel_info['time'])
 
-        # 更新評分器的當前時間
+                        if not self._has_enough_time(spot, arrival_time):
+                            continue
+
+                        score = self.evaluator.calculate_score(
+                            spot,
+                            current_location,
+                            travel_info['time'],
+                            is_meal_time=True
+                        )
+
+                        if score > best_dinner_score:
+                            best_dinner_score = score
+                            best_dinner = spot
+
+                    if best_dinner:
+                        return best_dinner
+
+        # 非用餐時間的一般選點邏輯
+        best_location = None
+        best_score = float('-inf')
         self.evaluator.current_time = current_time
 
         for location in available_locations:
-            # 計算交通時間
             travel_info = self._calculate_travel_info(
                 current_location, location)
-            travel_time = travel_info['time']
+            arrival_time = current_time + \
+                timedelta(minutes=travel_info['time'])
 
-            # 計算到達時間
-            arrival_time = current_time + timedelta(minutes=travel_time)
-
-            # 檢查時間限制
             if not self._has_enough_time(location, arrival_time):
                 continue
 
-            # 如果是用餐時間且是餐廳，檢查是否在合適的時間範圍
-            if (is_lunch_time or is_dinner_time) and \
-                    location.label in ['餐廳', '小吃', '夜市']:
-                target_time = lunch_time if is_lunch_time else dinner_time
-                # 這裡傳入具體的餐廳資訊
-                earliest, latest = self.get_dining_time_range(
-                    location, target_time)
-                if not (earliest <= arrival_time <= latest):
-                    continue
-
-            # 計算評分
             score = self.evaluator.calculate_score(
                 location,
                 current_location,
-                travel_time,
-                is_meal_time=(is_lunch_time or is_dinner_time)
+                travel_info['time'],
+                is_meal_time=False
             )
 
             if score > best_score:

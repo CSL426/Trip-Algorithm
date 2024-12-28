@@ -39,6 +39,7 @@ class TestPlanningStrategy:
                 lon=121.561964,
                 duration_min=90,
                 label="景點",
+                period='morning',
                 hours={i: [{'start': '09:00', 'end': '22:00'}]
                        for i in range(1, 8)}
             ),
@@ -49,6 +50,7 @@ class TestPlanningStrategy:
                 lon=121.5482,
                 duration_min=120,
                 label="博物館",
+                period='morning',
                 hours={i: [{'start': '08:30', 'end': '18:30'}]
                        for i in range(1, 8)}
             ),
@@ -59,6 +61,7 @@ class TestPlanningStrategy:
                 lon=121.5604,
                 duration_min=60,
                 label="餐廳",
+                period='lunch',
                 hours={
                     i: [
                         {'start': '11:30', 'end': '14:30'},
@@ -189,8 +192,7 @@ class TestPlanningStrategy:
     def test_restaurant_priority(self, strategy, start_location):
         """
         測試餐廳優先級處理
-        這是一個基本的測試，確保系統能在用餐時間優先選擇餐廳
-        未來可以加入更多條件來完善測試
+        確保系統能在用餐時間優先選擇餐廳
         """
         # 提供一個簡單的測試資料集
         test_places = [
@@ -201,6 +203,7 @@ class TestPlanningStrategy:
                 lon=121.5482,
                 duration_min=120,
                 label='博物館',
+                period='morning',
                 hours={i: [{'start': '08:30', 'end': '18:30'}]
                        for i in range(1, 8)}
             ),
@@ -211,12 +214,19 @@ class TestPlanningStrategy:
                 lon=121.5604,
                 duration_min=60,
                 label='餐廳',
+                period='lunch',
                 hours={i: [
                     {'start': '11:30', 'end': '14:30'},
                     {'start': '17:30', 'end': '21:30'}
                 ] for i in range(1, 8)}
             )
         ]
+
+        # 重要:設定requirement
+        strategy.requirement = {
+            "lunch_time": "12:00",
+            "dinner_time": "18:00"
+        }
 
         # 設定午餐時間
         lunch_time = datetime.strptime("12:00", "%H:%M")

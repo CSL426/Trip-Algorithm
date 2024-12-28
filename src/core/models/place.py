@@ -84,6 +84,12 @@ class PlaceDetail(BaseModel):
         description="相關網頁連結",
     )
 
+    #
+    period: str = Field(
+        default="",
+        description="可能的值: morning, lunch, afternoon, dinner, night",
+    )
+
     @field_validator('hours')
     def validate_hours(cls, v: Dict) -> Dict:
         """

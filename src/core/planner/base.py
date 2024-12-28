@@ -109,7 +109,8 @@ class TripPlanner:
              end_time: str = '18:00',
              travel_mode: str = 'transit',
              distance_threshold: float = 30.0,
-             efficiency_threshold: float = 0.1) -> List[Dict[str, Any]]:
+             efficiency_threshold: float = 0.1,
+             requirement: dict = None) -> List[Dict[str, Any]]:
         """
         執行行程規劃
 
@@ -154,8 +155,24 @@ class TripPlanner:
         self.distance_threshold = distance_threshold
         self.efficiency_threshold = efficiency_threshold
 
-        # 產生行程
-        return self._generate_itinerary()
+        # 建立規劃策略
+        strategy = PlanningStrategy(
+            start_time=self.start_datetime,
+            end_time=self.end_datetime,
+            travel_mode=self.travel_mode,
+            distance_threshold=self.distance_threshold,
+            efficiency_threshold=self.efficiency_threshold,
+            requirement=requirement  # 加入requirement參數
+        )
+
+        # 執行行程規劃
+        itinerary = strategy.execute(
+            current_location=self.start_location,
+            available_locations=self.available_locations,
+            current_time=self.start_datetime
+        )
+
+        return itinerary
 
     def _validate_time_range(self) -> bool:
         """

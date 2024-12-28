@@ -26,10 +26,25 @@ class GeoCalculator:
     # 地球的參數（WGS84橢球體模型）
     EARTH_RADIUS = 6371.0087714  # 地球平均半徑（公里）
 
+    @staticmethod
+    def _validate_coordinate(lat: float, lon: float) -> None:
+        """
+        驗證座標的有效性
+
+        輸入參數:
+            lat (float): 緯度，必須在 -90 到 90 度之間
+            lon (float): 經度，必須在 -180 到 180 度之間
+
+        異常:
+            ValueError: 當座標超出有效範圍時拋出錯誤
+        """
+        if not -90 <= lat <= 90:
+            raise ValueError(f"緯度必須在 -90 到 90 度之間：{lat}")
+        if not -180 <= lon <= 180:
+            raise ValueError(f"經度必須在 -180 到 180 度之間：{lon}")
+
     @classmethod
-    def calculate_distance(cls,
-                           point1: Dict[str, float],
-                           point2: Dict[str, float]) -> float:
+    def calculate_distance(cls, loc1: Dict[str, float], loc2: Dict[str, float]) -> float:
         """
         計算兩個地理座標點之間的距離
         使用 Haversine 公式計算球面上的最短距離
@@ -54,9 +69,13 @@ class GeoCalculator:
             >>> distance = GeoCalculator.calculate_distance(point1, point2)
             >>> print(f"距離：{distance:.2f} 公里")
         """
+        # 先驗證兩個座標
+        cls._validate_coordinate(loc1['lat'], loc1['lon'])
+        cls._validate_coordinate(loc2['lat'], loc2['lon'])
+
         # 轉換座標為弧度
-        lat1, lon1 = map(math.radians, [point1['lat'], point1['lon']])
-        lat2, lon2 = map(math.radians, [point2['lat'], point2['lon']])
+        lat1, lon1 = math.radians(loc1['lat']), math.radians(loc1['lon'])
+        lat2, lon2 = math.radians(loc2['lat']), math.radians(loc2['lon'])
 
         # 計算緯度和經度的差值
         dlat = lat2 - lat1

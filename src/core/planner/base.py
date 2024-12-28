@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional, Union
 from src.core.models.place import PlaceDetail
 from src.core.models.trip import Transport, TripPlan
 from .validator import InputValidator
+from .strategy import PlanningStrategy
 
 
 class TripPlanner:
@@ -51,27 +52,17 @@ class TripPlanner:
         """
         初始化所有地點資訊
 
-        這個方法會：
-        1. 驗證所有地點資料的正確性
+        這個方法負責：
+        1. 將輸入的字典資料轉換為 PlaceDetail 物件
         2. 設定起點和終點
         3. 初始化可用地點列表
 
         輸入參數：
-            locations: 所有可能的景點列表
-            custom_start: 自訂起點（可選）
-            custom_end: 自訂終點（可選）
-
-        使用範例：
-            planner.initialize_locations(
-                locations=[{'name': '台北101', 'lat': 25.033, 'lon': 121.561}],
-                custom_start={'name': '台北車站', 'lat': 25.047, 'lon': 121.517}
-            )
+            locations: 地點資料列表，每個元素可以是字典或 PlaceDetail 物件
+            custom_start: 自訂起點（選填）
+            custom_end: 自訂終點（選填）
         """
-        # 驗證並轉換地點資料
-        self.available_locations = self.validator.validate_locations(
-            locations, custom_start, custom_end)
-
-        # 設定預設起點（台北車站）
+        # 建立預設起點（台北車站）
         default_start = PlaceDetail(
             name='台北車站',
             lat=25.0478,
@@ -82,23 +73,36 @@ class TripPlanner:
                    for i in range(1, 8)}
         )
 
-        # 處理起點設定
-        if custom_start:
-            if isinstance(custom_start, PlaceDetail):
-                self.start_location = custom_start
+        # 處理所有地點
+        validated_locations = []
+        for loc in locations:
+            if isinstance(loc, dict):
+                # 確保 duration_min 欄位存在
+                if 'duration' in loc and 'duration_min' not in loc:
+                    loc['duration_min'] = loc['duration']
+                validated_locations.append(PlaceDetail(**loc))
             else:
+                validated_locations.append(loc)
+
+        self.available_locations = validated_locations
+
+        # 處理起點
+        if custom_start:
+            if isinstance(custom_start, dict):
                 self.start_location = PlaceDetail(**custom_start)
+            else:
+                self.start_location = custom_start
         else:
             self.start_location = default_start
 
-        # 處理終點設定
+        # 處理終點
         if custom_end:
-            if isinstance(custom_end, PlaceDetail):
-                self.end_location = custom_end
-            else:
+            if isinstance(custom_end, dict):
                 self.end_location = PlaceDetail(**custom_end)
+            else:
+                self.end_location = custom_end
         else:
-            self.end_location = self.start_location
+            self.end_location = self.start_location.model_copy()
 
     def plan(self,
              start_time: str = '09:00',
@@ -171,15 +175,46 @@ class TripPlanner:
         """
         生成完整的行程安排
 
-        這個方法會：
-        1. 產生行程的細節
-        2. 計算時間和交通資訊
-        3. 格式化輸出結果
+        此方法整合了以下功能：
+        1. 使用 PlanningStrategy 進行路線規劃
+        2. 處理時間和交通資訊
+        3. 產生標準格式的行程輸出
 
         回傳：
-            List[Dict]: 完整的行程安排列表
+            List[Dict]: 行程列表，每個字典包含：
+                - step: 順序編號
+                - name: 地點名稱
+                - start_time: 到達時間
+                - end_time: 離開時間
+                - duration: 停留時間（分鐘）
+                - transport_details: 交通方式說明
+                - travel_time: 交通所需時間
         """
-        raise NotImplementedError("子類別必須實作此方法")
+        # 建立規劃策略
+        strategy = PlanningStrategy(
+            start_time=self.start_datetime,
+            end_time=self.end_datetime,
+            travel_mode=self.travel_mode,
+            distance_threshold=self.distance_threshold,
+            efficiency_threshold=self.efficiency_threshold
+        )
+
+        # 執行行程規劃
+        itinerary = strategy.execute(
+            current_location=self.start_location,
+            available_locations=self.available_locations,
+            current_time=self.start_datetime
+        )
+
+        # 更新總距離和時間（用於統計資訊）
+        if itinerary:
+            self.total_distance = sum(
+                item.get('travel_distance', 0) for item in itinerary)
+            total_minutes = sum(item['duration'] +
+                                item['travel_time'] for item in itinerary)
+            self.total_time = total_minutes * 60  # 轉換為秒
+
+        return itinerary
 
     def get_execution_stats(self) -> Dict[str, Any]:
         """

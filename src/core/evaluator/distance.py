@@ -1,7 +1,9 @@
 # src/core/evaluator/distance.py
 
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union
 import math
+
+from src.core.models.place import PlaceDetail
 
 
 class DistanceCalculator:
@@ -19,38 +21,47 @@ class DistanceCalculator:
 
     @classmethod
     def calculate_distance(cls,
-                           loc1: Dict[str, float],
-                           loc2: Dict[str, float]) -> float:
+                           loc1: Union[Dict[str, float], PlaceDetail],
+                           loc2: Union[Dict[str, float], PlaceDetail]) -> float:
         """
         計算兩個地理座標點之間的直線距離
         使用 Haversine 公式計算球面上兩點間的最短距離
 
         輸入參數:
-            loc1 (Dict): 第一個位置，需包含：
+            loc1: 第一個位置，可以是字典或 PlaceDetail 物件
+                如果是字典，需包含：
                 - lat: 緯度 (度)
                 - lon: 經度 (度)
-            loc2 (Dict): 第二個位置，格式同上
+            loc2: 第二個位置，格式同上
 
         回傳:
             float: 兩點間的距離（公里）
 
         使用範例:
+            # 使用字典
             loc1 = {"lat": 25.0339808, "lon": 121.561964}  # 台北101
-            loc2 = {"lat": 25.0478, "lon": 121.5170}      # 台北車站
-            distance = DistanceCalculator.calculate_distance(loc1, loc2)
+
+            # 或使用 PlaceDetail 物件
+            loc1 = PlaceDetail(name="台北101", lat=25.0339808, lon=121.561964, ...)
         """
+        # 取得座標值（支援字典和 PlaceDetail 物件）
+        lat1 = loc1['lat'] if isinstance(loc1, dict) else loc1.lat
+        lon1 = loc1['lon'] if isinstance(loc1, dict) else loc1.lon
+        lat2 = loc2['lat'] if isinstance(loc2, dict) else loc2.lat
+        lon2 = loc2['lon'] if isinstance(loc2, dict) else loc2.lon
+
         # 轉換座標為弧度
-        lat1, lon1 = math.radians(loc1['lat']), math.radians(loc1['lon'])
-        lat2, lon2 = math.radians(loc2['lat']), math.radians(loc2['lon'])
+        lat1, lon1 = math.radians(lat1), math.radians(lon1)
+        lat2, lon2 = math.radians(lat2), math.radians(lon2)
 
         # 計算緯度和經度的差
         dlat = lat2 - lat1
         dlon = lon2 - lon1
 
-        # Haversine 公式
-        a = math.sin(dlat/2)**2 + \
-            math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+        # Haversine 公式計算
+        a = math.sin(dlat/2)**2 + math.cos(lat1) * \
+            math.cos(lat2) * math.sin(dlon/2)**2
+        c = 2 * math.asin(math.sqrt(a))
 
         return cls.EARTH_RADIUS * c
 

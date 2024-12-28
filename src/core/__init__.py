@@ -1,6 +1,6 @@
 # src/core/__init__.py
 
-from .trip_planner import TripPlanner
+from .planner.base import TripPlanner
 from .models import PlaceDetail, TripRequirement
 
 __all__ = [

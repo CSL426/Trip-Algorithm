@@ -60,7 +60,7 @@ def calculate_distance(point1: Dict[str, float],
     return GeoCalculator.calculate_distance(point1, point2)
 
 
-def format_time_range(start_time: Union[str, datetime.time], 
+def format_time_range(start_time: Union[str, datetime.time],
                       end_time: Union[str, datetime.time]) -> str:
     """
     將時間範圍格式化為字串
@@ -112,6 +112,38 @@ def calculate_region_bounds(center: Dict[str, float],
         >>> min_lat, max_lat, min_lon, max_lon = bounds
     """
     return GeoCalculator.calculate_region_bounds(center, radius_km)
+# src/core/utils/__init__.py
+
+
+def calculate_travel_time(from_location: dict, to_location: dict, travel_mode: str) -> dict:
+    """
+    計算兩個地點之間的交通時間和細節
+
+    輸入參數:
+        from_location (dict): 起點資訊
+            - lat: 緯度 (float)
+            - lon: 經度 (float)
+            - name: 地點名稱 (str)
+
+        to_location (dict): 終點資訊
+            - lat: 緯度 (float)
+            - lon: 經度 (float)
+            - name: 地點名稱 (str)
+
+        travel_mode (str): 交通方式
+            可能的值: "transit"（大眾運輸）, "driving"（開車）, 
+                    "walking"（步行）, "bicycling"（騎腳踏車）
+
+    回傳:
+        dict: 包含交通資訊的字典
+            - time: 預估所需時間（分鐘）
+            - transport_details: 交通方式描述
+    """
+    # 目前先回傳模擬資料，之後可以接入實際的交通時間計算服務
+    return {
+        'time': 30,  # 預設 30 分鐘
+        'transport_details': f'使用 {travel_mode} 方式前往'
+    }
 
 
 # 導出所有需要的類別和函數

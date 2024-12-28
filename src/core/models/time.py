@@ -88,10 +88,19 @@ class TimeSlot(BaseModel):
             check_time (datetime): 要檢查的時間點
 
         回傳:
-            bool: True表示在區間內，False表示在區間外
+            bool: True 表示在區間內，False 表示在區間外
+
+        使用範例:
+            time_slot = TimeSlot(start_time="09:00", end_time="17:00")
+            now = datetime.now()
+            is_open = time_slot.contains(now)
         """
-        start, end = self.to_datetime_tuple()
-        return start <= check_time <= end
+        # 只比較時間部分，忽略日期
+        check_time_only = check_time.time()
+        start = datetime.strptime(self.start_time, '%H:%M').time()
+        end = datetime.strptime(self.end_time, '%H:%M').time()
+
+        return start <= check_time_only <= end
 
     def duration_minutes(self) -> int:
         """

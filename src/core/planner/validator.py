@@ -1,5 +1,6 @@
 # src/core/planner/validator.py
 
+import re
 from datetime import datetime
 from typing import List, Dict, Optional, Union
 from src.core.models.place import PlaceDetail
@@ -145,15 +146,38 @@ class InputValidator:
 
     def _validate_time_format(self, time_str: str) -> None:
         """
-        驗證時間字串格式的正確性
+        驗證時間字串的格式是否正確
+
+        時間格式要求：
+        1. 必須是 HH:MM 格式
+        2. 小時（HH）必須是 00-23 的兩位數字
+        3. 分鐘（MM）必須是 00-59 的兩位數字
+        4. 必須包含冒號分隔符
 
         輸入參數：
-            time_str: 時間字串（HH:MM格式）
+            time_str: 要驗證的時間字串（例如："09:30"）
 
         異常：
-            ValueError: 當時間格式不正確時拋出
+            ValueError: 當時間格式不符合要求時拋出，並說明具體原因
         """
+        # 檢查是否為空字串
+        if not time_str:
+            raise ValueError("時間字串不能為空")
+
+        # 使用正則表達式檢查格式
+        pattern = r'^([0-1][0-9]|2[0-3]):([0-5][0-9])$'
+        if not re.match(pattern, time_str):
+            raise ValueError(
+                f"時間格式錯誤：{time_str}，必須是 HH:MM 格式，其中 "
+                "HH 是 00-23 的兩位數字，MM 是 00-59 的兩位數字"
+            )
+
         try:
-            datetime.strptime(time_str, '%H:%M')
-        except ValueError:
-            raise ValueError(f"時間格式錯誤：{time_str}，應為HH:MM格式")
+            # 額外使用 datetime 來驗證時間的有效性
+            hour, minute = map(int, time_str.split(':'))
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                raise ValueError("小時必須在 0-23 之間，分鐘必須在 0-59 之間")
+        except ValueError as e:
+            if str(e) == "小時必須在 0-23 之間，分鐘必須在 0-59 之間":
+                raise
+            raise ValueError(f"無效的時間格式：{time_str}")

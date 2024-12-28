@@ -1,7 +1,7 @@
 # src/core/models/place.py
 
 from typing import List, Dict, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, time
 from .time import TimeSlot
 import re
@@ -84,7 +84,7 @@ class PlaceDetail(BaseModel):
         description="相關網頁連結",
     )
 
-    @Field.validator('hours')
+    @field_validator('hours')
     def validate_hours(cls, v: Dict) -> Dict:
         """
         驗證營業時間格式的正確性
@@ -134,37 +134,50 @@ class PlaceDetail(BaseModel):
                 if slot['end'] == '00:00':
                     slot['end'] = '23:59'
 
+                start_time = datetime.strptime(slot['start'], '%H:%M')
+                end_time = datetime.strptime(slot['end'], '%H:%M')
+                if end_time <= start_time:
+                    raise ValueError(f"結束時間必須晚於開始時間: {slot}")
+
         return v
 
     def is_open_at(self, day: int, time_str: str) -> bool:
         """
         判斷指定時間是否在營業時間內
 
-        特色：
-        1. 支援跨日營業時間判斷
-        2. 自動處理公休日
-        3. 支援多時段營業
+        輸入說明：
+        day: 1-7 代表星期一到星期日
+        time_str: 'HH:MM' 格式的時間字串，例如 '12:00'
 
-        輸入參數:
-            day (int): 1-7代表星期一到星期日
-            time_str (str): 要檢查的時間，格式為 'HH:MM'
+        運作原理：
+        1. 首先檢查是否有該天的營業時間資料
+        2. 針對該天的每個營業時段檢查：
+        - 例如可能有午餐時段 11:30-14:30
+        - 和晚餐時段 17:30-21:30
+        3. 只要在任一時段內，就回傳 True
 
-        回傳:
-            bool: True表示營業中，False表示非營業時間
-
-        使用範例:
-            place.is_open_at(1, '14:30')  # 檢查週一下午2:30是否營業
+        舉例：
+        - 現在是週一中午12點
+        - 檢查 hours[1] 的時段
+        - 12:00 在 11:30-14:30 之間
+        - 所以應該回傳 True
         """
+        # 重要：加入除錯輸出
+        print(f"\n檢查營業時間")
+        print(f"checking day: {day}, time: {time_str}")
+        print(f"venue hours: {self.hours}")
+
         # 檢查是否有該天的營業時間資料
         if day not in self.hours:
+            print(f"沒有星期 {day} 的營業時間資料")
             return False
 
-        # 取得該天的營業時段
         time_slots = self.hours[day]
         if not time_slots or time_slots[0] is None:
+            print("該天公休")
             return False
 
-        # 將檢查時間轉換為datetime.time物件
+        # 將檢查時間轉換為 datetime.time 物件
         check_time = datetime.strptime(time_str, '%H:%M').time()
 
         # 檢查每個營業時段
@@ -175,14 +188,14 @@ class PlaceDetail(BaseModel):
             start = datetime.strptime(slot['start'], '%H:%M').time()
             end = datetime.strptime(slot['end'], '%H:%M').time()
 
-            # 處理跨日營業的情況
-            if start > end:  # 例如 23:00 - 02:00
-                if check_time >= start or check_time <= end:
-                    return True
-            else:  # 一般情況
-                if start <= check_time <= end:
-                    return True
+            print(f"checking slot: {start} - {end}")
 
+            # 檢查是否在這個時段內
+            if start <= check_time <= end:
+                print("在營業時間內！")
+                return True
+
+        print("不在任何營業時段內")
         return False
 
     def get_next_available_time(self, from_day: int, from_time: str) -> Optional[Dict[str, str]]:

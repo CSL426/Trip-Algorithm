@@ -54,12 +54,9 @@ class PlanningStrategy:
         執行行程規劃策略
 
         輸入參數：
-            current_location (PlaceDetail): 目前位置
-            available_locations (List[PlaceDetail]): 可選擇的地點列表
-            current_time (datetime): 當前時間
-
-        回傳：
-            List[Dict]: 規劃好的行程列表
+            current_location: 目前位置（PlaceDetail物件）
+            available_locations: 可選擇的地點列表（PlaceDetail物件的列表）
+            current_time: 當前時間
         """
         itinerary = []
         current_loc = current_location
@@ -69,67 +66,58 @@ class PlanningStrategy:
         while remaining_locations and visit_time < self.end_time:
             # 尋找下一個最佳地點
             next_location = self._find_best_next_location(
-                current_loc, remaining_locations, visit_time)
+                current_loc,
+                remaining_locations,
+                visit_time
+            )
 
             if not next_location:
                 break
 
-            # 計算交通時間
+            # 計算交通時間（注意這裡使用點號存取）
             travel_info = self._calculate_travel_info(
-                current_loc, next_location)
+                current_loc,
+                next_location
+            )
 
             # 計算時間安排
             arrival_time = visit_time + timedelta(minutes=travel_info['time'])
             departure_time = arrival_time + \
                 timedelta(minutes=next_location.duration_min)
 
-            # 檢查是否超過結束時間
-            if departure_time > self.end_time:
-                break
-
             # 加入行程
             itinerary.append({
                 'step': len(itinerary) + 1,
-                'name': next_location.name,
+                'name': next_location.name,  # 使用點號存取
                 'start_time': arrival_time.strftime('%H:%M'),
                 'end_time': departure_time.strftime('%H:%M'),
-                'duration': next_location.duration_min,
+                'duration': next_location.duration_min,  # 使用點號存取
                 'transport_details': travel_info['transport_details'],
                 'travel_time': travel_info['time']
             })
 
-            # 更新狀態
             current_loc = next_location
             visit_time = departure_time
             remaining_locations.remove(next_location)
 
         return itinerary
 
-    def _find_best_next_location(self, current_location: PlaceDetail,
+    def _find_best_next_location(self,
+                                 current_location: PlaceDetail,
                                  available_locations: List[PlaceDetail],
                                  current_time: datetime) -> Optional[PlaceDetail]:
         """
-        尋找下一個最佳造訪地點
-
-        評分考慮因素：
-        1. 距離和交通時間的效率
-        2. 營業時間的配合度
-        3. 用餐時間的協調性
-        4. 停留時間的合理性
-
-        輸入參數：
-            current_location: 目前位置
-            available_locations: 可選擇的地點列表
-            current_time: 當前時間
-
-        回傳：
-            Optional[PlaceDetail]: 最佳的下一個地點，如果沒有合適的地點則回傳 None
+        尋找最佳的下一個造訪地點
         """
         best_location = None
         best_score = float('-inf')
 
-        # 判斷是否為用餐時間
-        is_meal_time = self._is_meal_time(current_time)
+        # 更新評分器的當前時間
+        self.evaluator.current_time = current_time  # 重要：更新評分器的當前時間
+
+        # 判斷是否為用餐時間（11:00-14:00 或 17:00-20:00）
+        hour = current_time.hour
+        is_meal_time = (11 <= hour <= 14) or (17 <= hour <= 20)
 
         for location in available_locations:
             # 計算交通時間
@@ -144,7 +132,7 @@ class PlanningStrategy:
             if not self._has_enough_time(location, arrival_time):
                 continue
 
-            # 計算地點評分
+            # 計算評分
             score = self.evaluator.calculate_score(
                 location,
                 current_location,
@@ -158,25 +146,30 @@ class PlanningStrategy:
 
         return best_location
 
-    def _calculate_travel_info(self, from_location: PlaceDetail,
+    def _calculate_travel_info(self,
+                               from_location: PlaceDetail,
                                to_location: PlaceDetail) -> Dict[str, Any]:
         """
         計算兩地點間的交通資訊
 
         輸入參數：
-            from_location: 起點
-            to_location: 終點
-
-        回傳：
-            Dict: 包含交通時間和交通方式的資訊
+            from_location: 起點（PlaceDetail物件）
+            to_location: 終點（PlaceDetail物件）
         """
-        return calculate_travel_time(
-            {"lat": from_location.lat, "lon": from_location.lon,
-             "name": from_location.name},
-            {"lat": to_location.lat, "lon": to_location.lon,
-             "name": to_location.name},
-            self.travel_mode
-        )
+        return {
+            'time': 30,  # 先使用固定的交通時間
+            'transport_details': f'使用 {self.travel_mode} 方式前往',
+            'coordinates': {
+                'from': {
+                    'lat': from_location.lat,  # 使用點號存取
+                    'lon': from_location.lon
+                },
+                'to': {
+                    'lat': to_location.lat,  # 使用點號存取
+                    'lon': to_location.lon
+                }
+            }
+        }
 
     def _has_enough_time(self, location: PlaceDetail,
                          arrival_time: datetime) -> bool:

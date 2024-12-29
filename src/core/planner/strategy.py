@@ -1,20 +1,23 @@
 # src/core/planner/strategy.py
 
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import random
 from src.core.models.place import PlaceDetail
 from src.core.evaluator import LocationEvaluator
 from src.core.utils.geo import GeoCalculator
+from src.core.services.google_maps import GoogleMapsService
+from src.config.config import GOOGLE_MAPS_API_KEY
 
 
 class PlanningStrategy:
     """行程規劃策略類別
 
-    此類別負責行程規劃的核心邏輯，包含：
+    負責：
     1. 依據時段選擇適合的景點
     2. 計算並評分可行的選項
-    3. 產生最終的行程建議
+    3. 整合 Google Maps 路線規劃
+    4. 產生最終的行程建議
     """
 
     def __init__(self,
@@ -42,8 +45,190 @@ class PlanningStrategy:
         self.requirement = requirement or {}
         self.geo_calculator = GeoCalculator()
 
+        # 初始化 Google Maps 服務
+        try:
+            self.maps_service = GoogleMapsService(GOOGLE_MAPS_API_KEY)
+        except Exception as e:
+            print(f"警告：Google Maps 服務初始化失敗: {str(e)}")
+            self.maps_service = None
+
+    def _calculate_location_score(self,
+                                  location: PlaceDetail,
+                                  current_location: PlaceDetail,
+                                  current_time: datetime,
+                                  travel_time: float) -> float:
+        """計算地點的綜合評分
+
+        考慮因素：
+        1. 地點評分(rating) - 30%
+        2. 交通時間合理性 - 30%
+        3. 時段適合度 - 20%
+        4. 營業時間配合度 - 20%
+
+        輸入參數:
+            location: 要評分的地點
+            current_location: 目前位置
+            current_time: 當前時間
+            travel_time: 預估交通時間(分鐘)
+
+        回傳:
+            float: 0~1之間的評分，或 -1 表示不合適
+        """
+        try:
+            # 計算實際抵達時間
+            arrival_time = current_time + timedelta(minutes=travel_time)
+            departure_time = arrival_time + \
+                timedelta(minutes=location.duration_min)
+
+            # 1. 檢查基本條件
+            # 檢查是否超過結束時間
+            if departure_time > self.end_time:
+                return -1
+
+            # 檢查營業時間
+            weekday = current_time.weekday() + 1  # 1-7 代表週一到週日
+            time_str = arrival_time.strftime('%H:%M')
+            if not location.is_open_at(weekday, time_str):
+                return -1
+
+            # 2. 計算各項分數
+
+            # 2.1 評分分數 (0-5分轉換為0-1分)
+            rating_score = min(1.0, location.rating / 5.0)
+
+            # 2.2 交通時間分數
+            # 交通時間超過2小時視為不合理
+            max_travel_time = 120
+            travel_score = max(0, 1 - (travel_time / max_travel_time))
+
+            # 2.3 時段適合度分數
+            period_score = 1.0 if location.is_suitable_for_current_time(
+                arrival_time) else 0.3
+
+            # 2.4 營業時間配合度分數
+            time_score = 0.0
+            if location.duration_min > 0:
+                hours = location.hours.get(weekday, [])
+                if hours and hours[0]:
+                    for slot in hours:
+                        if slot:
+                            end_time = datetime.strptime(
+                                slot['end'], '%H:%M').time()
+                            end_datetime = datetime.combine(
+                                arrival_time.date(), end_time)
+                            if end_datetime > departure_time:
+                                remaining_time = (
+                                    end_datetime - departure_time).total_seconds() / 3600
+                                time_score = min(
+                                    1.0, remaining_time / 2)  # 至少還有2小時最理想
+                                break
+            else:
+                time_score = 1.0
+
+            # 3. 計算加權總分
+            final_score = (
+                rating_score * 0.3 +
+                travel_score * 0.3 +
+                period_score * 0.2 +
+                time_score * 0.2
+            )
+
+            return final_score
+
+        except Exception as e:
+            print(f"評分計算錯誤 ({location.name}): {str(e)}")
+            return -1  # 發生錯誤時回傳 -1
+
+    def _calculate_distance(self,
+                            from_location: PlaceDetail,
+                            to_location: PlaceDetail) -> float:
+        """計算兩個地點之間的直線距離
+
+        使用 Haversine 公式計算球面上兩點間的最短距離
+
+        輸入參數:
+            from_location: 起點位置
+                PlaceDetail 物件，需包含：
+                - lat: 緯度
+                - lon: 經度
+            to_location: 終點位置
+                PlaceDetail 物件，需包含：
+                - lat: 緯度
+                - lon: 經度
+
+        回傳:
+            float: 兩點間的直線距離(公里)
+        """
+        try:
+            # 檢查輸入物件是否有效
+            if not isinstance(from_location, PlaceDetail) or not isinstance(to_location, PlaceDetail):
+                raise ValueError("輸入必須是 PlaceDetail 物件")
+
+            # 呼叫 GeoCalculator 的 calculate_distance 方法
+            distance = self.geo_calculator.calculate_distance(
+                from_location,  # 起點
+                to_location    # 終點
+            )
+
+            return float(distance)  # 確保回傳浮點數
+
+        except Exception as e:
+            print(
+                f"距離計算錯誤 ({from_location.name} -> {to_location.name}): {str(e)}")
+            return float('inf')  # 回傳無限大表示不可達
+
+    def _filter_locations_by_period(self,
+                                    locations: List[PlaceDetail],
+                                    period: str) -> List[PlaceDetail]:
+        """篩選特定時段的地點
+
+        依據時段標記篩選適合的地點：
+        1. 對應時段的景點
+        2. 餐廳在用餐時段會被優先選擇
+        3. 24小時營業的地點可以在任何時段被選擇
+
+        輸入參數:
+            locations: 所有可選地點列表
+            period: 目標時段 (morning/lunch/afternoon/dinner/night)
+
+        回傳:
+            List[PlaceDetail]: 符合時段的地點列表
+        """
+        filtered = []
+        for loc in locations:
+            # 檢查是否為24小時營業
+            is_24h = False
+            try:
+                is_24h = all(
+                    isinstance(slot, list) and slot and
+                    isinstance(slot[0], dict) and
+                    slot[0].get('start') == '00:00' and
+                    slot[0].get('end') == '23:59'
+                    for day, slot in loc.hours.items()
+                    if slot is not None
+                )
+            except Exception as e:
+                print(f"檢查24小時營業時發生錯誤 ({loc.name}): {str(e)}")
+                is_24h = False
+
+            # 用餐時間優先選擇餐廳
+            if period in ['lunch', 'dinner']:
+                if loc.label in ['餐廳', '小吃', '夜市']:
+                    filtered.append(loc)
+                continue
+
+            # 其他時段：符合時段或24小時營業
+            if loc.period == period or is_24h:
+                filtered.append(loc)
+
+        return filtered
+
     def _get_current_period(self, current_time: datetime) -> str:
-        """判斷當前應該選擇哪個時段的景點
+        """判斷當前時段
+
+        依據時間判斷應該安排什麼類型的景點，考慮：
+        1. 用餐時間優先安排餐廳
+        2. 依時間切分成早上、下午、晚上等時段
 
         輸入參數:
             current_time: 當前時間
@@ -72,12 +257,12 @@ class PlanningStrategy:
         # 提前一小時開始尋找用餐地點
         if lunch_time:
             lunch_buffer = timedelta(hours=1)
-            if current_time >= lunch_time - lunch_buffer and current_time <= lunch_time:
+            if current_time >= lunch_time - lunch_buffer and current_time <= lunch_time + lunch_buffer:
                 return "lunch"
 
         if dinner_time:
             dinner_buffer = timedelta(hours=1)
-            if current_time >= dinner_time - dinner_buffer and current_time <= dinner_time:
+            if current_time >= dinner_time - dinner_buffer and current_time <= dinner_time + dinner_buffer:
                 return "dinner"
 
         # 其他時段判斷
@@ -85,219 +270,96 @@ class PlanningStrategy:
         if hour < 11:
             return "morning"
         elif hour < 14:
-            return "afternoon"
+            return "lunch"
         elif hour < 17:
             return "afternoon"
+        elif hour < 19:
+            return "dinner"
         else:
             return "night"
 
-    def _filter_locations_by_period(self,
-                                    locations: List[PlaceDetail],
-                                    period: str) -> List[PlaceDetail]:
-        """篩選特定時段的地點
+    def _calculate_travel_info(self,
+                               from_location: PlaceDetail,
+                               to_location: PlaceDetail,
+                               departure_time: datetime = None,
+                               use_api: bool = False) -> Dict[str, Any]:
+        """計算交通資訊
+
+        兩種模式：
+        1. 快速模式(use_api=False)：使用直線距離和預設速度估算
+        2. 精確模式(use_api=True)：使用 Google Maps API 查詢實際路線
 
         輸入參數:
-            locations: 所有可選地點列表
-            period: 目標時段
+            from_location: 起點
+            to_location: 終點
+            departure_time: 出發時間（預設為現在）
+            use_api: 是否使用 Google Maps API
 
         回傳:
-            List[PlaceDetail]: 符合時段的地點列表
+            Dict[str, Any]: {
+                'time': float,                # 交通時間(分鐘)
+                'transport_details': str,      # 交通方式說明
+                'distance_km': float,         # 距離(公里)
+                'route_info': Dict            # 詳細路線資訊(若使用API)
+            }
         """
-        return [loc for loc in locations if loc.period == period]
+        # 計算直線距離
+        distance = self._calculate_distance(from_location, to_location)
 
-    def _calculate_distance(self,
-                            loc1: PlaceDetail,
-                            loc2: PlaceDetail) -> float:
-        """計算兩地點間的直線距離
+        # 使用 Google Maps API
+        if use_api and self.maps_service:
+            try:
+                # 確保時間是未來時間
+                current_time = datetime.now()
+                query_time = departure_time if departure_time and departure_time > current_time else current_time
 
-        輸入參數:
-            loc1: 起點
-            loc2: 終點
+                route = self.maps_service.calculate_travel_time(
+                    origin=(from_location.lat, from_location.lon),
+                    destination=(to_location.lat, to_location.lon),
+                    mode=self.travel_mode,
+                    departure_time=query_time
+                )
 
-        回傳:
-            float: 距離(公里)
-        """
-        return self.geo_calculator.calculate_distance(loc1, loc2)
+                return {
+                    'time': route['duration_minutes'],
+                    'distance_km': route['distance_meters'] / 1000,
+                    'transport_details': self._get_transport_display(),
+                    'route_info': route
+                }
 
-    def _calculate_efficiency_score(self,
-                                    location: PlaceDetail,
-                                    distance: float) -> float:
-        """計算效率評分
+            except Exception as e:
+                print(f"警告：Google Maps 路線查詢失敗: {str(e)}")
+                # 發生錯誤時退回使用估算方式
 
-        計算公式：效率 = k / (距離 × 交通時間)
-        k值根據停留時間調整：
-        - 停留>=120分鐘：k=2.0
-        - 停留>=60分鐘：k=1.5
-        - 停留<60分鐘：k=1.0
+        # 使用預設速度估算
+        speeds = {
+            'transit': 30,  # 大眾運輸速度約 30 km/h
+            'driving': 40,  # 開車速度約 40 km/h
+            'bicycling': 15,  # 自行車速度約 15 km/h
+            'walking': 5   # 步行速度約 5 km/h
+        }
+        speed = speeds.get(self.travel_mode, 30)  # 預設使用 30 km/h
+        est_time = (distance / speed) * 60  # 轉換為分鐘
 
-        輸入參數:
-            location: 地點資訊
-            distance: 與當前位置的距離(公里)
+        # 加入一些交通延遲的考量
+        if distance > 10:  # 距離超過 10 公里
+            est_time *= 1.2  # 增加 20% 的時間作為交通延遲
 
-        回傳:
-            float: 0.0-1.0 之間的評分
-        """
-        # 計算k值
-        if location.duration_min >= 120:
-            k = 2.0
-        elif location.duration_min >= 60:
-            k = 1.5
-        else:
-            k = 1.0
+        return {
+            'time': round(est_time),  # 四捨五入到整數分鐘
+            'distance_km': distance,
+            'transport_details': self._get_transport_display(),
+            'route_info': None  # 不使用實際路線資訊
+        }
 
-        # 預估交通時間(分鐘)：假設平均速度 30km/h
-        est_travel_time = (distance / 30) * 60
-
-        # 避免除以零
-        if distance == 0 or est_travel_time == 0:
-            return 1.0
-
-        # 計算效率值
-        efficiency = k / (distance * est_travel_time)
-
-        # 標準化到 0-1 之間
-        return min(1.0, efficiency)
-
-    def _calculate_time_fitness_score(self,
-                                      location: PlaceDetail,
-                                      arrival_time: datetime) -> float:
-        """計算時間配合度評分
-
-        評分標準：
-        - 完全在營業時間內：1.0
-        - 接近打烊(少於1小時)：0.7
-        - 非營業時間：0.0
-
-        輸入參數:
-            location: 地點資訊
-            arrival_time: 預計到達時間
-
-        回傳:
-            float: 0.0-1.0 之間的評分
-        """
-        # 檢查是否營業中
-        weekday = arrival_time.weekday() + 1
-        time_str = arrival_time.strftime('%H:%M')
-
-        if not location.is_open_at(weekday, time_str):
-            return 0.0
-
-        # 檢查是否接近打烊時間
-        close_time = None
-        if weekday in location.hours and location.hours[weekday]:
-            for slot in location.hours[weekday]:
-                if slot and 'end' in slot:
-                    close_time = datetime.strptime(slot['end'], '%H:%M').replace(
-                        year=arrival_time.year,
-                        month=arrival_time.month,
-                        day=arrival_time.day
-                    )
-
-        if close_time:
-            remaining_time = (close_time - arrival_time).total_seconds() / 3600
-            if remaining_time < 1:
-                return 0.7
-
-        return 1.0
-
-    def _calculate_location_score(self,
-                                  location: PlaceDetail,
-                                  current_location: PlaceDetail,
-                                  current_time: datetime) -> float:
-        """計算地點的綜合評分
-
-        評分權重：
-        - 效率評分：70%
-        - 時間配合度：30%
-
-        輸入參數:
-            location: 待評分的地點
-            current_location: 當前位置
-            current_time: 當前時間
-
-        回傳:
-            float: 0.0-1.0 之間的綜合評分
-        """
-        # 計算距離
-        distance = self._calculate_distance(current_location, location)
-
-        # 如果超過最大距離，直接回傳0分
-        if distance > self.distance_threshold:
-            return 0.0
-
-        # 計算效率評分
-        efficiency_score = self._calculate_efficiency_score(location, distance)
-
-        # 計算預計到達時間
-        est_travel_time = (distance / 30) * 60  # 預估交通時間(分鐘)
-        arrival_time = current_time + timedelta(minutes=est_travel_time)
-
-        # 計算時間配合度評分
-        time_score = self._calculate_time_fitness_score(location, arrival_time)
-
-        # 計算加權總分
-        total_score = (efficiency_score * 0.7) + (time_score * 0.3)
-
-        return total_score
-
-    def _find_best_next_location(self,
-                                 current_location: PlaceDetail,
-                                 available_locations: List[PlaceDetail],
-                                 current_time: datetime) -> Optional[PlaceDetail]:
-        """尋找下一個最佳景點
-
-        主要流程：
-        1. 判斷當前時段
-        2. 篩選符合時段的地點
-        3. 計算每個地點的綜合評分
-        4. 選出前三名
-        5. 隨機選擇一個
-
-        輸入參數:
-            current_location: 當前位置
-            available_locations: 可選擇的地點列表
-            current_time: 當前時間
-
-        回傳:
-            Optional[PlaceDetail]: 選中的下一個地點，如果沒有合適的地點則回傳None
-        """
-        # 判斷當前時段
-        current_period = self._get_current_period(current_time)
-
-        # 篩選符合時段的地點
-        period_locations = self._filter_locations_by_period(
-            available_locations,
-            current_period
-        )
-
-        if not period_locations:
-            return None
-
-        # 計算每個地點的評分
-        scored_locations = []
-        for location in period_locations:
-            score = self._calculate_location_score(
-                location,
-                current_location,
-                current_time
-            )
-            if score > 0:  # 只保留有效的選項
-                scored_locations.append((location, score))
-
-        if not scored_locations:
-            return None
-
-        # 依評分排序並選出前三名
-        scored_locations.sort(key=lambda x: x[1], reverse=True)
-        top3 = scored_locations[:3]
-
-        if not top3:
-            return None
-
-        # 隨機選擇一個
-        selected_location = random.choice(top3)[0]
-
-        return selected_location
+    def _get_transport_display(self) -> str:
+        """取得交通方式的顯示文字"""
+        return {
+            'transit': '大眾運輸',
+            'driving': '開車',
+            'walking': '步行',
+            'bicycling': '騎車'
+        }.get(self.travel_mode, self.travel_mode)
 
     def execute(self,
                 current_location: PlaceDetail,
@@ -305,10 +367,11 @@ class PlanningStrategy:
                 current_time: datetime) -> List[Dict[str, Any]]:
         """執行行程規劃
 
-        主要流程：
+        流程：
         1. 從起點開始，逐步找尋下一個最佳地點
-        2. 計算實際交通時間和路線
-        3. 產生完整的行程清單
+        2. 先用快速估算選出前三名
+        3. 用 Google Maps API 計算實際交通時間
+        4. 產生完整的行程清單
 
         輸入參數:
             current_location: 起點位置
@@ -317,13 +380,14 @@ class PlanningStrategy:
 
         回傳:
             List[Dict[str, Any]]: 完整的行程清單，每個景點包含：
-            - step: 順序編號
-            - name: 地點名稱
-            - start_time: 到達時間
-            - end_time: 離開時間
-            - duration: 停留時間
-            - transport_details: 交通方式
-            - travel_time: 交通時間
+                - step: 順序編號
+                - name: 地點名稱
+                - start_time: 到達時間
+                - end_time: 離開時間
+                - duration: 停留時間(分鐘)
+                - transport_details: 交通方式說明
+                - travel_time: 交通時間(分鐘)
+                - route_info: 詳細路線資訊(若有)
         """
         itinerary = []
         current_loc = current_location
@@ -331,100 +395,147 @@ class PlanningStrategy:
         visit_time = current_time
 
         while remaining_locations and visit_time < self.end_time:
-            # 尋找下一個最佳地點
-            next_location = self._find_best_next_location(
+            # 1. 使用估算方式選出前三名
+            candidates = self._find_top_candidates(
                 current_loc,
                 remaining_locations,
+                visit_time,
+                top_n=3
+            )
+
+            if not candidates:
+                break
+
+            # 2. 使用 Google Maps API 重新評分
+            best_choice = self._select_best_candidate(
+                candidates,
+                current_loc,
                 visit_time
             )
 
-            if not next_location:
+            if not best_choice:
                 break
 
-            # 計算交通資訊
-            travel_info = self._calculate_travel_info(
-                current_loc, next_location)
+            location, travel_info = best_choice
 
-            # 計算時間
+            # 3. 計算時間
             arrival_time = visit_time + timedelta(minutes=travel_info['time'])
             departure_time = arrival_time + \
-                timedelta(minutes=next_location.duration_min)
+                timedelta(minutes=location.duration_min)
 
-            # 檢查是否超過結束時間
+            # 4. 檢查是否超過結束時間
             if departure_time > self.end_time:
                 break
 
-            # 加入行程
+            # 5. 加入行程
             itinerary.append({
                 'step': len(itinerary) + 1,
-                'name': next_location.name,
+                'name': location.name,
                 'start_time': arrival_time.strftime('%H:%M'),
                 'end_time': departure_time.strftime('%H:%M'),
-                'duration': next_location.duration_min,
+                'duration': location.duration_min,
                 'transport_details': travel_info['transport_details'],
-                'travel_time': travel_info['time']
+                'travel_time': travel_info['time'],
+                'route_info': travel_info.get('route_info')
             })
 
-            # 更新狀態
-            current_loc = next_location
+            # 6. 更新狀態
+            current_loc = location
             visit_time = departure_time
-            remaining_locations.remove(next_location)
+            remaining_locations.remove(location)
 
         return itinerary
 
-    def _calculate_travel_info(self,
-                               from_location: PlaceDetail,
-                               to_location: PlaceDetail) -> Dict[str, Any]:
-        """計算交通資訊
-
-        此方法先使用直線距離和預估速度計算大概的交通時間
-        之後在最終確定行程時才會使用 Google Maps API 取得實際路線
+    def _find_top_candidates(self,
+                             current_location: PlaceDetail,
+                             available_locations: List[PlaceDetail],
+                             current_time: datetime,
+                             top_n: int = 3) -> List[PlaceDetail]:
+        """使用快速估算方式找出最佳候選地點
 
         輸入參數:
-            from_location: 起點
-            to_location: 終點
+            current_location: 當前位置
+            available_locations: 可選擇的地點列表
+            current_time: 當前時間
+            top_n: 要選出幾個候選地點
 
         回傳:
-            Dict[str, Any]: 包含以下資訊的字典：
-            - time: 預估交通時間(分鐘)
-            - transport_details: 交通方式說明
-            - coordinates: 起訖點座標
+            List[PlaceDetail]: 最佳候選地點列表
         """
-        # 計算直線距離
-        distance = self._calculate_distance(from_location, to_location)
+        scored_locations = []
+        current_period = self._get_current_period(current_time)
 
-        # 根據交通方式預估平均速度(公里/小時)
-        speeds = {
-            'transit': 30,
-            'driving': 40,
-            'bicycling': 15,
-            'walking': 5
-        }
-        speed = speeds.get(self.travel_mode, 30)
+        # 篩選符合時段的地點
+        period_locations = self._filter_locations_by_period(
+            available_locations,
+            current_period
+        )
 
-        # 計算預估時間(分鐘)
-        est_time = (distance / speed) * 60
+        for location in period_locations:
+            # 使用快速估算計算評分
+            travel_info = self._calculate_travel_info(
+                current_location,
+                location,
+                use_api=False
+            )
 
-        # 轉換交通方式顯示
-        transport_display = {
-            'transit': '大眾運輸',
-            'driving': '開車',
-            'walking': '步行',
-            'bicycling': '騎車'
-        }.get(self.travel_mode, self.travel_mode)
+            score = self._calculate_location_score(
+                location,
+                current_location,
+                current_time,
+                travel_info['time']
+            )
 
-        # 回傳交通資訊（四捨五入到整數分鐘）
-        return {
-            'time': round(est_time),
-            'transport_details': f'{transport_display}',
-            'coordinates': {
-                'from': {
-                    'lat': from_location.lat,
-                    'lon': from_location.lon
-                },
-                'to': {
-                    'lat': to_location.lat,
-                    'lon': to_location.lon
-                }
-            }
-        }
+            if score > 0:
+                scored_locations.append((location, score))
+
+        # 排序並選出前N名
+        scored_locations.sort(key=lambda x: x[1], reverse=True)
+        return [loc for loc, _ in scored_locations[:top_n]]
+
+    def _select_best_candidate(self,
+                               candidates: List[PlaceDetail],
+                               current_location: PlaceDetail,
+                               current_time: datetime
+                               ) -> Optional[Tuple[PlaceDetail, Dict]]:
+        """使用 Google Maps API 選出最佳地點
+
+        輸入參數:
+            candidates: 候選地點列表
+            current_location: 當前位置
+            current_time: 當前時間
+
+        回傳:
+            Optional[Tuple[PlaceDetail, Dict]]: (選中的地點, 交通資訊)
+            若所有候選地點都不合適則回傳 None
+        """
+        best_score = float('-inf')
+        best_choice = None
+        best_travel_info = None
+
+        for location in candidates:
+            # 使用 API 計算實際交通時間
+            travel_info = self._calculate_travel_info(
+                current_location,
+                location,
+                current_time,
+                use_api=True
+            )
+
+            # 重新計算評分
+            score = self._calculate_location_score(
+                location,
+                current_location,
+                current_time,
+                travel_info['time']
+            )
+
+            if score > best_score:
+                best_score = score
+                best_choice = location
+                best_travel_info = travel_info
+
+        if best_choice is None:
+            return None
+
+        return (best_choice, best_travel_info)

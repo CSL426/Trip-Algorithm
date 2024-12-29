@@ -11,7 +11,9 @@
 """
 
 import math
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Union
+
+from src.core.models.place import PlaceDetail
 
 
 class GeoCalculator:
@@ -44,7 +46,8 @@ class GeoCalculator:
             raise ValueError(f"經度必須在 -180 到 180 度之間：{lon}")
 
     @classmethod
-    def calculate_distance(cls, loc1: Dict[str, float], loc2: Dict[str, float]) -> float:
+    def calculate_distance(cls, loc1: Union[Dict[str, float], PlaceDetail],
+                           loc2: Union[Dict[str, float], PlaceDetail]) -> float:
         """
         計算兩個地理座標點之間的距離
         使用 Haversine 公式計算球面上的最短距離
@@ -55,29 +58,33 @@ class GeoCalculator:
         3. 考慮地球曲率進行修正
 
         輸入參數：
-            point1: 第一個點的座標，需包含：
-                - lat: 緯度（度）
-                - lon: 經度（度）
-            point2: 第二個點的座標，格式同上
+            loc1: 第一個位置 (PlaceDetail物件或包含lat/lon的字典)
+            loc2: 第二個位置 (PlaceDetail物件或包含lat/lon的字典)
 
         回傳：
             float: 兩點間的距離（公里）
 
         使用範例：
-            >>> point1 = {"lat": 25.0478, "lon": 121.5170}  # 台北車站
-            >>> point2 = {"lat": 25.0339, "lon": 121.5619}  # 台北101
-            >>> distance = GeoCalculator.calculate_distance(point1, point2)
+            >>> loc1 = {"lat": 25.0478, "lon": 121.5170}  # 台北車站
+            >>> loc2 = {"lat": 25.0339, "lon": 121.5619}  # 台北101
+            >>> distance = GeoCalculator.calculate_distance(loc1, loc2)
             >>> print(f"距離：{distance:.2f} 公里")
         """
-        # 先驗證兩個座標
-        cls._validate_coordinate(loc1['lat'], loc1['lon'])
-        cls._validate_coordinate(loc2['lat'], loc2['lon'])
+        # 取得座標值（支援字典和PlaceDetail物件）
+        lat1 = loc1['lat'] if isinstance(loc1, dict) else loc1.lat
+        lon1 = loc1['lon'] if isinstance(loc1, dict) else loc1.lon
+        lat2 = loc2['lat'] if isinstance(loc2, dict) else loc2.lat
+        lon2 = loc2['lon'] if isinstance(loc2, dict) else loc2.lon
 
-        # 轉換座標為弧度
-        lat1, lon1 = math.radians(loc1['lat']), math.radians(loc1['lon'])
-        lat2, lon2 = math.radians(loc2['lat']), math.radians(loc2['lon'])
+        # 驗證座標
+        cls._validate_coordinate(lat1, lon1)
+        cls._validate_coordinate(lat2, lon2)
 
-        # 計算緯度和經度的差值
+        # 轉換為弧度
+        lat1, lon1 = math.radians(lat1), math.radians(lon1)
+        lat2, lon2 = math.radians(lat2), math.radians(lon2)
+
+        # 計算差值
         dlat = lat2 - lat1
         dlon = lon2 - lon1
 

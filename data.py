@@ -31,7 +31,7 @@ TEST_REQUIREMENT = {
     "end_time": "20:00",          # 結束時間
     "start_point": "台北車站",     # 起點
     "end_point": "台北車站",       # 終點
-    "transport_mode": "transit",   # 交通方式：大眾運輸
+    "transport_mode": "walking",   # 交通方式：大眾運輸
     "distance_threshold": 30,      # 距離限制：30公里
     "breakfast_time": "none",      # 不需要早餐
     "lunch_time": "12:00",        # 午餐時間
@@ -50,6 +50,7 @@ TEST_LOCATIONS.extend([
         'duration': 120,
         'label': '景點',
         'period': 'morning',
+        'url': 'https://www.dintaifung.com.tw/store/xinyi.php',
         'hours': {
             1: [{'start': '05:00', 'end': '18:00'}],
             2: [{'start': '05:00', 'end': '18:00'}],
@@ -68,6 +69,7 @@ TEST_LOCATIONS.extend([
         'duration': 90,
         'label': '景點',
         'period': 'morning',
+        'url': 'https://www.dintaifung.com.tw/store/xinyi.php',
         'hours': {
             1: [{'start': '06:00', 'end': '22:00'}],
             2: [{'start': '06:00', 'end': '22:00'}],
@@ -86,6 +88,7 @@ TEST_LOCATIONS.extend([
         'duration': 150,
         'label': '景點',
         'period': 'morning',
+        'url': 'https://www.dintaifung.com.tw/store/xinyi.php',
         'hours': {
             1: [{'start': '05:00', 'end': '20:00'}],
             2: [{'start': '05:00', 'end': '20:00'}],
@@ -104,6 +107,7 @@ TEST_LOCATIONS.extend([
         'duration': 180,
         'label': '景點',
         'period': 'morning',
+        'url': 'https://www.dintaifung.com.tw/store/xinyi.php',
         'hours': {
             1: [{'start': '08:00', 'end': '18:00'}],
             2: [{'start': '08:00', 'end': '18:00'}],
@@ -122,6 +126,7 @@ TEST_LOCATIONS.extend([
         'duration': 100,
         'label': '景點',
         'period': 'morning',
+        'url': 'https://www.dintaifung.com.tw/store/xinyi.php',
         'hours': {
             1: [{'start': '09:00', 'end': '17:00'}],
             2: [{'start': '09:00', 'end': '17:00'}],

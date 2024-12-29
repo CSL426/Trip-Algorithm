@@ -405,10 +405,18 @@ class PlanningStrategy:
         # 計算預估時間(分鐘)
         est_time = (distance / speed) * 60
 
-        # 回傳交通資訊
+        # 轉換交通方式顯示
+        transport_display = {
+            'transit': '大眾運輸',
+            'driving': '開車',
+            'walking': '步行',
+            'bicycling': '騎車'
+        }.get(self.travel_mode, self.travel_mode)
+
+        # 回傳交通資訊（四捨五入到整數分鐘）
         return {
-            'time': est_time,
-            'transport_details': f'使用 {self.travel_mode} 方式前往',
+            'time': round(est_time),
+            'transport_details': f'{transport_display}',
             'coordinates': {
                 'from': {
                     'lat': from_location.lat,

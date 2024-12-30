@@ -25,8 +25,8 @@ class GeoCalculator:
     確保在實際應用中有足夠的精確度
     """
 
-    # 地球的參數（WGS84橢球體模型）
-    EARTH_RADIUS = 6371.0087714  # 地球平均半徑（公里）
+    # 地球的參數(WGS84橢球體模型)
+    EARTH_RADIUS = 6371.0087714  # 地球平均半徑(公里)
 
     @staticmethod
     def _validate_coordinate(lat: float, lon: float) -> None:
@@ -62,7 +62,7 @@ class GeoCalculator:
             loc2: 第二個位置 (PlaceDetail物件或包含lat/lon的字典)
 
         回傳：
-            float: 兩點間的距離（公里）
+            float: 兩點間的距離(公里)
 
         使用範例：
             >>> loc1 = {"lat": 25.0478, "lon": 121.5170}  # 台北車站
@@ -70,7 +70,7 @@ class GeoCalculator:
             >>> distance = GeoCalculator.calculate_distance(loc1, loc2)
             >>> print(f"距離：{distance:.2f} 公里")
         """
-        # 取得座標值（支援字典和PlaceDetail物件）
+        # 取得座標值(支援字典和PlaceDetail物件)
         lat1 = loc1['lat'] if isinstance(loc1, dict) else loc1.lat
         lon1 = loc1['lon'] if isinstance(loc1, dict) else loc1.lon
         lat2 = loc2['lat'] if isinstance(loc2, dict) else loc2.lat
@@ -109,9 +109,9 @@ class GeoCalculator:
 
         輸入參數：
             center: 中心點座標
-                - lat: 緯度（度）
-                - lon: 經度（度）
-            radius_km: 搜尋半徑（公里）
+                - lat: 緯度(度)
+                - lon: 經度(度)
+            radius_km: 搜尋半徑(公里)
 
         回傳：
             Tuple[float, float, float, float]: 
@@ -150,8 +150,8 @@ class GeoCalculator:
 
         輸入參數：
             point: 要檢查的點座標
-                - lat: 緯度（度）
-                - lon: 經度（度）
+                - lat: 緯度(度)
+                - lon: 經度(度)
             bounds: 區域範圍 (min_lat, max_lat, min_lon, max_lon)
 
         回傳：
@@ -181,13 +181,13 @@ class GeoCalculator:
 
         輸入參數：
             points: 地理座標點列表，每個點需包含：
-                - lat: 緯度（度）
-                - lon: 經度（度）
+                - lat: 緯度(度)
+                - lon: 經度(度)
 
         回傳：
             Dict[str, float]: 中心點座標
-                - lat: 緯度（度）
-                - lon: 經度（度）
+                - lat: 緯度(度)
+                - lon: 經度(度)
 
         使用範例：
             >>> points = [

@@ -29,8 +29,8 @@ class NavigationTranslator:
         'Continue': '繼續前進',
         'ramp': '匝道',
         'at the 1st cross street': '在第一個路口',
-        'on the left': '（在左側）',
-        'on the right': '（在右側）',
+        'on the left': '(在左側)',
+        'on the right': '(在右側)',
         'after': '經過',
         'before': '在...之前',
         'toward': '朝向',
@@ -78,8 +78,8 @@ class NavigationTranslator:
             result = result.replace(eng, chi)
 
         # 處理特殊格式
-        result = result.replace('（在左側））', '（在左側）')
-        result = result.replace('位於 （在左側）', '位於左側')
+        result = result.replace('(在左側))', '(在左側)')
+        result = result.replace('位於 (在左側)', '位於左側')
 
         # 調整語序
         result = result.replace('沿著 南', '往南沿著')
@@ -138,11 +138,11 @@ class NavigationTranslator:
             # 組合文字
             step_text = f"{i}. {instruction}"
             if distance:
-                step_text += f"（{distance}"
+                step_text += f"({distance}"
                 if duration:
-                    step_text += f"，約{duration}）"
+                    step_text += f"，約{duration})"
                 else:
-                    step_text += "）"
+                    step_text += ")"
 
             navigation_text.append(step_text)
 

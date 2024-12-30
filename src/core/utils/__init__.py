@@ -44,12 +44,12 @@ def calculate_distance(point1: Dict[str, float],
 
     輸入參數：
         point1: 第一個點的座標，需包含：
-            - lat: 緯度（度）
-            - lon: 經度（度）
+            - lat: 緯度(度)
+            - lon: 經度(度)
         point2: 第二個點的座標，格式同上
 
     回傳：
-        float: 兩點間的距離（公里）
+        float: 兩點間的距離(公里)
 
     使用範例：
         >>> point1 = {"lat": 25.0478, "lon": 121.5170}  # 台北車站
@@ -69,11 +69,11 @@ def format_time_range(start_time: Union[str, datetime.time],
     自動進行必要的轉換並返回格式化的時間範圍字串。
 
     輸入參數：
-        start_time: 開始時間（HH:MM格式的字串或 time 物件）
-        end_time: 結束時間（格式同上）
+        start_time: 開始時間(HH:MM格式的字串或 time 物件)
+        end_time: 結束時間(格式同上)
 
     回傳：
-        str: 格式化後的時間範圍字串（HH:MM-HH:MM）
+        str: 格式化後的時間範圍字串(HH:MM-HH:MM)
 
     使用範例：
         >>> print(format_time_range("09:00", "17:30"))
@@ -98,9 +98,9 @@ def calculate_region_bounds(center: Dict[str, float],
 
     輸入參數：
         center: 中心點座標
-            - lat: 緯度（度）
-            - lon: 經度（度）
-        radius_km: 搜尋半徑（公里）
+            - lat: 緯度(度)
+            - lon: 經度(度)
+        radius_km: 搜尋半徑(公里)
 
     回傳：
         Tuple[float, float, float, float]: 
@@ -131,12 +131,12 @@ def calculate_travel_time(from_location: dict, to_location: dict, travel_mode: s
             - name: 地點名稱 (str)
 
         travel_mode (str): 交通方式
-            可能的值: "transit"（大眾運輸）, "driving"（開車）, 
-                    "walking"（步行）, "bicycling"（騎腳踏車）
+            可能的值: "transit"(大眾運輸), "driving"(開車), 
+                    "walking"(步行), "bicycling"(騎腳踏車)
 
     回傳:
         dict: 包含交通資訊的字典
-            - time: 預估所需時間（分鐘）
+            - time: 預估所需時間(分鐘)
             - transport_details: 交通方式描述
     """
     # 目前先回傳模擬資料，之後可以接入實際的交通時間計算服務

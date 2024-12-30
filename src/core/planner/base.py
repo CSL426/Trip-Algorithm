@@ -47,7 +47,7 @@ class TripPlanner:
         2. 設定起點和終點
         3. 初始化可用地點列表
         """
-        # 建立預設起點（台北車站）
+        # 建立預設起點(台北車站)
         default_start = PlaceDetail(
             name='台北車站',
             lat=25.0478,

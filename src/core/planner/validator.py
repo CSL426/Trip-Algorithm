@@ -35,8 +35,8 @@ class InputValidator:
 
         輸入參數：
             locations: 地點列表，每個地點可以是字典或PlaceDetail物件
-            custom_start: 自訂起點（選填）
-            custom_end: 自訂終點（選填）
+            custom_start: 自訂起點(選填)
+            custom_end: 自訂終點(選填)
 
         回傳：
             List[PlaceDetail]: 驗證後的地點物件列表
@@ -77,7 +77,7 @@ class InputValidator:
         驗證行程需求的正確性
 
         輸入參數：
-            requirement: 行程需求（字典或TripRequirement物件）
+            requirement: 行程需求(字典或TripRequirement物件)
 
         回傳：
             TripRequirement: 驗證後的需求物件
@@ -150,12 +150,12 @@ class InputValidator:
 
         時間格式要求：
         1. 必須是 HH:MM 格式
-        2. 小時（HH）必須是 00-23 的兩位數字
-        3. 分鐘（MM）必須是 00-59 的兩位數字
+        2. 小時(HH)必須是 00-23 的兩位數字
+        3. 分鐘(MM)必須是 00-59 的兩位數字
         4. 必須包含冒號分隔符
 
         輸入參數：
-            time_str: 要驗證的時間字串（例如："09:30"）
+            time_str: 要驗證的時間字串(例如："09:30")
 
         異常：
             ValueError: 當時間格式不符合要求時拋出，並說明具體原因

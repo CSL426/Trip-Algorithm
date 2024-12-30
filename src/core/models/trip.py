@@ -26,7 +26,7 @@ class Transport(BaseModel):
     time: int = Field(
         ge=0,
         default=0,
-        description="交通所需時間（分鐘）",
+        description="交通所需時間(分鐘)",
         examples=[30, 45]
     )
 
@@ -70,7 +70,7 @@ class TripPlan(BaseModel):
 
     duration: int = Field(
         ge=0,
-        description="停留時間（分鐘）",
+        description="停留時間(分鐘)",
         examples=[90]
     )
 
@@ -126,12 +126,12 @@ class TripRequirement(BaseModel):
     )
 
     start_point: str = Field(
-        description="起點位置（地點名稱或座標）",
+        description="起點位置(地點名稱或座標)",
         examples=["台北車站"]
     )
 
     end_point: str = Field(
-        description="終點位置（地點名稱或座標）",
+        description="終點位置(地點名稱或座標)",
         examples=["台北車站", "none"]
     )
 
@@ -141,22 +141,22 @@ class TripRequirement(BaseModel):
     )
 
     distance_threshold: int = Field(
-        description="可接受的最大距離（公里）",
+        description="可接受的最大距離(公里)",
         examples=[30]
     )
 
     breakfast_time: str = Field(
-        description="早餐時間（HH:MM或none）",
+        description="早餐時間(HH:MM或none)",
         examples=["08:00", "none"]
     )
 
     lunch_time: str = Field(
-        description="午餐時間（HH:MM或none）",
+        description="午餐時間(HH:MM或none)",
         examples=["12:00", "none"]
     )
 
     dinner_time: str = Field(
-        description="晚餐時間（HH:MM或none）",
+        description="晚餐時間(HH:MM或none)",
         examples=["18:00", "none"]
     )
 
@@ -166,7 +166,7 @@ class TripRequirement(BaseModel):
     )
 
     date: str = Field(
-        description="出發日期（MM-DD格式）",
+        description="出發日期(MM-DD格式)",
         examples=["12-25"]
     )
 
@@ -177,7 +177,7 @@ class TripRequirement(BaseModel):
         驗證時間格式的正確性
 
         驗證重點：
-        1. 檢查是否為有效的時間格式（HH:MM）
+        1. 檢查是否為有效的時間格式(HH:MM)
         2. 允許特殊值 "none"
 
         輸入參數:
@@ -203,7 +203,7 @@ class TripRequirement(BaseModel):
         驗證日期格式的正確性
 
         驗證重點：
-        1. 檢查是否為有效的日期格式（MM-DD）
+        1. 檢查是否為有效的日期格式(MM-DD)
         2. 允許特殊值 "none"
 
         輸入參數:

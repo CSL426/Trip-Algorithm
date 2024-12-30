@@ -292,7 +292,7 @@ class PlanningStrategy:
         輸入參數:
             from_location: 起點
             to_location: 終點
-            departure_time: 出發時間（預設為現在）
+            departure_time: 出發時間(預設為現在)
             use_api: 是否使用 Google Maps API
 
         回傳:

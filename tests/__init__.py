@@ -90,7 +90,7 @@ def create_test_datetime(time_str: str) -> datetime:
     建立測試用的日期時間物件
 
     輸入參數：
-        time_str: 時間字串（格式：HH:MM）
+        time_str: 時間字串(格式：HH:MM)
 
     回傳：
         datetime: 當天的指定時間

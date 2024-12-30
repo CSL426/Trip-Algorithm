@@ -38,7 +38,7 @@ class TimeHandler:
         並確保小時和分鐘都在合理範圍內
 
         輸入參數：
-            time_str: 要驗證的時間字串（HH:MM格式）
+            time_str: 要驗證的時間字串(HH:MM格式)
 
         回傳：
             bool: True 表示格式正確，False 表示格式錯誤
@@ -62,7 +62,7 @@ class TimeHandler:
         3. 轉換為 time 物件
 
         輸入參數：
-            time_range: 時間範圍字串（格式：HH:MM-HH:MM）
+            time_range: 時間範圍字串(格式：HH:MM-HH:MM)
 
         回傳：
             Tuple[time, time]: (開始時間, 結束時間)
@@ -98,7 +98,7 @@ class TimeHandler:
 
         運作原理：
         1. 將所有時間轉換為分鐘數進行比較
-        2. 考慮跨日的情況（例如營業時間 23:00-02:00）
+        2. 考慮跨日的情況(例如營業時間 23:00-02:00)
 
         輸入參數：
             check_time: 要檢查的時間
@@ -148,7 +148,7 @@ class TimeHandler:
             allow_overnight: 是否允許跨日計算
 
         回傳：
-            int: 時間差（分鐘）
+            int: 時間差(分鐘)
 
         使用範例：
             >>> start = datetime.strptime("09:00", "%H:%M").time()
@@ -180,7 +180,7 @@ class TimeHandler:
             end_time: 結束時間
 
         回傳：
-            str: 格式化後的時間範圍字串（HH:MM-HH:MM）
+            str: 格式化後的時間範圍字串(HH:MM-HH:MM)
 
         使用範例：
             >>> start = datetime.strptime("09:00", "%H:%M").time()

@@ -11,7 +11,7 @@ class TravelTimeCalculator(ABC):
     """交通時間計算介面
 
     定義計算兩點間交通時間的標準介面
-    可以有不同的實作方式（例如：直線距離估算、Google Maps API、其他地圖服務）
+    可以有不同的實作方式(例如：直線距離估算、Google Maps API、其他地圖服務)
     """
 
     @abstractmethod

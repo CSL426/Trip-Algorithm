@@ -17,7 +17,7 @@ class DistanceCalculator:
     3. 提供距離相關的評分依據
     """
 
-    EARTH_RADIUS = 6371  # 地球半徑（公里）
+    EARTH_RADIUS = 6371  # 地球半徑(公里)
 
     @classmethod
     def calculate_distance(cls,
@@ -35,7 +35,7 @@ class DistanceCalculator:
             loc2: 第二個位置，格式同上
 
         回傳:
-            float: 兩點間的距離（公里）
+            float: 兩點間的距離(公里)
 
         使用範例:
             # 使用字典
@@ -44,7 +44,7 @@ class DistanceCalculator:
             # 或使用 PlaceDetail 物件
             loc1 = PlaceDetail(name="台北101", lat=25.0339808, lon=121.561964, ...)
         """
-        # 取得座標值（支援字典和 PlaceDetail 物件）
+        # 取得座標值(支援字典和 PlaceDetail 物件)
         lat1 = loc1['lat'] if isinstance(loc1, dict) else loc1.lat
         lon1 = loc1['lon'] if isinstance(loc1, dict) else loc1.lon
         lat2 = loc2['lat'] if isinstance(loc2, dict) else loc2.lat
@@ -74,8 +74,8 @@ class DistanceCalculator:
         距離越接近閾值，評分越低
 
         輸入參數:
-            distance (float): 實際距離（公里）
-            threshold (float): 距離閾值（公里）
+            distance (float): 實際距離(公里)
+            threshold (float): 距離閾值(公里)
 
         回傳:
             float: 0.0~1.0之間的評分因子
@@ -99,7 +99,7 @@ class DistanceCalculator:
             center (Dict): 中心點座標
                 - lat: 緯度
                 - lon: 經度
-            radius_km (float): 半徑（公里）
+            radius_km (float): 半徑(公里)
 
         回傳:
             Tuple[float, float, float, float]: 

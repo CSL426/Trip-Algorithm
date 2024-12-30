@@ -27,7 +27,7 @@ class TestGeoCalculator:
         # 計算距離
         distance = GeoCalculator.calculate_distance(taipei_station, taipei_101)
         
-        # 確保距離在合理範圍內（比如說3-6公里）
+        # 確保距離在合理範圍內(比如說3-6公里)
         assert 3 < distance < 6, "計算出的距離明顯不合理"
 
     def test_calculate_region_bounds(self):
@@ -48,7 +48,7 @@ class TestGeoCalculator:
         assert min_lat < center["lat"] < max_lat, "緯度範圍計算有誤"
         assert min_lon < center["lon"] < max_lon, "經度範圍計算有誤"
 
-        # 檢查範圍大小是否合理（1公里大約是0.01度）
+        # 檢查範圍大小是否合理(1公里大約是0.01度)
         assert abs(max_lat - min_lat) < 0.02, "緯度範圍過大"
         assert abs(max_lon - min_lon) < 0.02, "經度範圍過大"
 
@@ -58,15 +58,15 @@ class TestGeoCalculator:
         我們使用實際的地標來測試範圍判斷功能，確保能正確判斷
         一個點是否落在指定的矩形範圍內。
         """
-        # 設定測試範圍（以台北車站為中心的大約 1 公里範圍）
+        # 設定測試範圍(以台北車站為中心的大約 1 公里範圍)
         bounds = (25.0378, 25.0578, 121.5070, 121.5270)
 
-        # 測試範圍內的點（台北北門）
+        # 測試範圍內的點(台北北門)
         point_in = {"lat": 25.0491, "lon": 121.5101}
         assert GeoCalculator.is_point_in_bounds(point_in, bounds), \
             "應該要判斷為在範圍內的點被判斷為範圍外"
 
-        # 測試範圍外的點（台北101）
+        # 測試範圍外的點(台北101)
         point_out = {"lat": 25.0339, "lon": 121.5619}
         assert not GeoCalculator.is_point_in_bounds(point_out, bounds), \
             "應該要判斷為在範圍外的點被判斷為範圍內"

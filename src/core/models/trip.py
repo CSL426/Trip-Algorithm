@@ -59,12 +59,12 @@ class TripPlan(BaseModel):
     )
 
     start_time: str = Field(
-        description="開始時間（HH:MM格式）",
+        description="開始時間(HH:MM格式)",
         examples=["09:30"]
     )
 
     end_time: str = Field(
-        description="結束時間（HH:MM格式）",
+        description="結束時間(HH:MM格式)",
         examples=["11:00"]
     )
 
@@ -116,12 +116,12 @@ class TripRequirement(BaseModel):
     """
 
     start_time: str = Field(
-        description="行程開始時間（HH:MM格式）",
+        description="行程開始時間(HH:MM格式)",
         examples=["09:00"]
     )
 
     end_time: str = Field(
-        description="行程結束時間（HH:MM格式）",
+        description="行程結束時間(HH:MM格式)",
         examples=["18:00"]
     )
 

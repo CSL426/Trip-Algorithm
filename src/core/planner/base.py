@@ -152,6 +152,9 @@ class TripPlanner:
         回傳:
             List[Dict]: 規劃後的行程列表
         """
+        # 儲存交通方式
+        self.travel_mode = travel_mode
+
         # 初始化時間
         today = datetime.now().date()
         self.start_datetime = datetime.combine(
@@ -220,3 +223,75 @@ class TripPlanner:
             'visited_count': len(self.selected_locations),
             'total_distance': self.total_distance
         }
+
+    def get_location_by_name(self, name: str) -> Optional[PlaceDetail]:
+        """根據名稱取得地點資訊
+
+        輸入參數:
+            name: str - 地點名稱
+
+        回傳:
+            Optional[PlaceDetail]: 找到的地點資訊,找不到則回傳 None
+        """
+        # 檢查起點
+        if self.start_location and self.start_location.name == name:
+            return self.start_location
+
+        # 檢查終點
+        if self.end_location and self.end_location.name == name:
+            return self.end_location
+
+        # 檢查所有可用地點
+        for location in self.available_locations:
+            if location.name == name:
+                return location
+
+        return None
+
+    def get_travel_info(self,
+                        from_location: PlaceDetail,
+                        to_location: PlaceDetail,
+                        departure_time: str) -> Dict:
+        """計算兩地點間的交通資訊
+
+        輸入參數:
+            from_location: PlaceDetail - 起點資訊
+            to_location: PlaceDetail - 終點資訊 
+            departure_time: str - 出發時間 (HH:MM格式)
+
+        回傳:
+            Dict: {
+                'time': float,              # 交通時間(分鐘)
+                'transport_details': str,    # 交通方式說明
+                'distance': float,          # 距離(公里)
+                'route_info': Dict,         # Google Maps API 回傳的路線資訊
+                'navigation_text': str      # 中文導航說明
+            }
+        """
+        from src.core.utils.navigation_translator import NavigationTranslator
+
+        # 將出發時間轉換為 datetime
+        departure_dt = datetime.strptime(departure_time, '%H:%M')
+
+        # 使用策略計算交通資訊
+        strategy = PlanningStrategy(
+            start_time=departure_dt,
+            end_time=departure_dt + timedelta(hours=24),  # 設一個虛擬的結束時間
+            travel_mode=self.travel_mode
+        )
+
+        # 取得基本交通資訊
+        travel_info = strategy._calculate_travel_info(
+            from_location=from_location,
+            to_location=to_location,
+            departure_time=departure_dt,
+            use_api=True  # 使用 Google Maps API 獲取詳細路線
+        )
+
+        # 如果有路線資訊,添加中文導航說明
+        if 'route_info' in travel_info:
+            travel_info['navigation_text'] = NavigationTranslator.format_navigation(
+                travel_info['route_info']
+            )
+
+        return travel_info

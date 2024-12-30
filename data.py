@@ -28,13 +28,13 @@ TEST_CUSTOM_START = {
 # 測試用的行程需求
 TEST_REQUIREMENT = {
     "start_time": "08:00",        # 開始時間
-    "end_time": "20:00",          # 結束時間
+    "end_time": "21:00",          # 結束時間
     "start_point": "台北車站",     # 起點
     "end_point": "台北車站",       # 終點
-    "transport_mode": "walking",   # 交通方式：大眾運輸
+    "transport_mode": "driving",   # 交通方式：大眾運輸
     "distance_threshold": 30,      # 距離限制：30公里
     "breakfast_time": "none",      # 不需要早餐
-    "lunch_time": "12:00",        # 午餐時間
+    "lunch_time": "11:00",        # 午餐時間
     "dinner_time": "18:00",       # 晚餐時間
     "budget": "none",             # 無預算限制
     "date": "12-25"              # 日期：12月25日

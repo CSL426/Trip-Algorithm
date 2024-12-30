@@ -10,11 +10,12 @@
 
 import time
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from src.core.planner.base import TripPlanner
 from src.core.models import TripRequirement, PlaceDetail
 from data import TEST_LOCATIONS, TEST_REQUIREMENT, TEST_CUSTOM_START
+from src.core.utils.navigation_translator import NavigationTranslator
 
 
 class TripPlanningSystem:
@@ -42,7 +43,8 @@ class TripPlanningSystem:
                 - lon: float         # 經度
                 - duration: int      # 建議停留時間(分鐘)
                 - label: str         # 地點類型
-                - period: str        # 時段標記(morning/lunch/afternoon/dinner/night)
+                # 時段標記(morning/lunch/afternoon/dinner/night)
+                - period: str
                 - hours: Dict        # 營業時間
                 - rating: float      # 評分(選填)
 
@@ -138,18 +140,44 @@ class TripPlanningSystem:
 
         輸入參數:
             locations: 地點資料列表
+                格式: [{
+                    name: str,          # 地點名稱
+                    lat: float,         # 緯度
+                    lon: float,         # 經度
+                    duration: int,      # 建議停留時間(分鐘)
+                    label: str,         # 地點類型
+                    hours: dict         # 營業時間
+                }, ...]
             requirement: 行程需求
-            custom_start: 自訂起點(選填)
+                格式: {
+                    start_time: str,    # 開始時間 (HH:MM)
+                    end_time: str,      # 結束時間 (HH:MM)
+                    start_point: str,   # 起點名稱
+                    transport_mode: str # 交通方式
+                }
+            custom_start: 自訂起點資訊(選填)
+                格式: {
+                    name: str,     # 地點名稱
+                    lat: float,    # 緯度
+                    lon: float     # 經度
+                }
+            need_navigation: bool - 是否需要導航資訊(預設False)
 
-        回傳：
-            List[Dict]: 規劃後的行程列表，每個景點包含：
-                - step: int          # 順序編號
-                - name: str          # 地點名稱
-                - start_time: str    # 到達時間 (HH:MM)
-                - end_time: str      # 離開時間 (HH:MM)
-                - duration: int      # 停留時間(分鐘)
-                - transport_details: str  # 交通方式
-                - travel_time: float     # 交通時間(分鐘)
+        回傳:
+            List[Dict]: 規劃後的行程列表,格式:
+            [{
+                step: int,              # 順序編號
+                name: str,              # 地點名稱
+                start_time: str,        # 到達時間 (HH:MM)
+                end_time: str,          # 離開時間 (HH:MM)
+                duration: int,          # 停留時間(分鐘)
+                transport_details: str,  # 交通方式說明
+                travel_time: float      # 交通時間(分鐘)
+            }]
+
+        異常:
+            ValueError: 當資料格式不正確時
+            RuntimeError: 規劃失敗時
         """
         start_time = time.time()
 
@@ -162,30 +190,131 @@ class TripPlanningSystem:
             self.planner.initialize_locations(validated_locations,
                                               custom_start=custom_start)
 
-            # 3. 執行規劃
-            itinerary = self.planner.plan(
+            # 3. 建立起點行程
+            result = []
+            start = {
+                'step': 0,
+                'name': validated_requirement.start_point,
+                'start_time': validated_requirement.start_time,
+                'end_time': validated_requirement.start_time,
+                'duration': 0,
+                'transport_details': '起點',
+                'travel_time': 0
+            }
+            result.append(start)
+
+            # 4. 執行規劃
+            main_itinerary = self.planner.plan(
                 start_time=validated_requirement.start_time,
                 end_time=validated_requirement.end_time,
                 travel_mode=validated_requirement.transport_mode,
                 requirement=requirement
             )
 
+            # 更新順序編號
+            for i, item in enumerate(main_itinerary, 1):
+                item['step'] = i
+                result.append(item)
+
+            # 5. 驗證並調整行程
+            result = self._verify_and_adjust_itinerary(
+                result,
+                validated_requirement.end_point,
+                validated_requirement.end_time
+            )
+
             self.execution_time = time.time() - start_time
-            return itinerary
+            return result
 
         except Exception as e:
             print(f"行程規劃錯誤: {str(e)}")
             raise
 
+    def _verify_and_adjust_itinerary(self,
+                                     itinerary: List[Dict],
+                                     end_point: str,
+                                     end_time: str,
+                                     min_duration: int = 30) -> List[Dict]:
+        """驗證並調整行程,確保能返回終點
+
+        輸入參數:
+            itinerary: List[Dict] - 當前行程列表
+            end_point: str - 終點名稱
+            end_time: str - 結束時間
+            min_duration: int - 最少停留時間(分鐘)
+
+        回傳:
+            List[Dict]: 調整後的行程列表
+        """
+        if len(itinerary) <= 1:  # 只有起點
+            return itinerary
+
+        while True:
+            # 計算返回終點的時間
+            last_location = self.planner.get_location_by_name(
+                itinerary[-1]['name'])
+            end_location = self.planner.get_location_by_name(end_point)
+            travel_info = self.planner.get_travel_info(
+                last_location,
+                end_location,
+                itinerary[-1]['end_time']
+            )
+
+            # 計算預計抵達終點時間
+            last_end_time = datetime.strptime(
+                itinerary[-1]['end_time'], '%H:%M')
+            end_arrival = last_end_time + \
+                timedelta(minutes=travel_info['time'])
+            required_end = datetime.strptime(end_time, '%H:%M')
+
+            # 如果可以準時返回,加入終點行程
+            if end_arrival <= required_end:
+                end = {
+                    'step': len(itinerary),
+                    'name': end_point,
+                    'start_time': end_arrival.strftime('%H:%M'),
+                    'end_time': end_arrival.strftime('%H:%M'),
+                    'duration': 0,
+                    'transport_details': travel_info['transport_details'],
+                    'travel_time': travel_info['time']
+                }
+                itinerary.append(end)
+                return itinerary
+
+            # 嘗試縮短最後一個景點的停留時間
+            last_point = itinerary[-1]
+            if last_point['duration'] > min_duration:
+                # 縮短停留時間
+                reduced_duration = max(
+                    min_duration, last_point['duration'] - 30)
+                reduced_end_time = (datetime.strptime(last_point['start_time'], '%H:%M') +
+                                    timedelta(minutes=reduced_duration))
+
+                # 更新最後一個景點
+                last_point['duration'] = reduced_duration
+                last_point['end_time'] = reduced_end_time.strftime('%H:%M')
+                continue
+
+            # 如果無法透過縮短時間解決,移除最後一個景點
+            itinerary.pop()
+
+            # 如果只剩下起點,表示無法規劃
+            if len(itinerary) <= 1:
+                raise RuntimeError("無法找到合適的行程安排")
+
+            # 重新進行驗證
+            continue
+
     def get_execution_time(self) -> float:
-        """取得執行時間（秒）"""
+        """取得執行時間(秒)"""
         return self.execution_time
 
-    def print_itinerary(self, itinerary: List[Dict]) -> None:
+    def print_itinerary(self, itinerary: List[Dict], show_navigation: bool = False) -> None:
         """列印行程結果
 
         輸入參數:
             itinerary: 行程列表
+            show_navigation: 是否顯示導航說明(預設False)
         """
         print("\n=== 行程規劃結果 ===")
 
@@ -193,12 +322,18 @@ class TripPlanningSystem:
         total_duration = 0
 
         for plan in itinerary:
-            print(f"\n[地點 {plan['step']}]")
+            print(f"\n[地點 {plan['step']}]", end=' ')
             print(f"名稱: {plan['name']}")
             print(f"時間: {plan['start_time']} - {plan['end_time']}")
-            print(f"停留: {plan['duration']}分鐘")
-            print(
-                f"交通: {plan['transport_details']} ({int(plan['travel_time'])}分鐘)")
+            print(f"停留: {plan['duration']}分鐘", end=' ')
+            print(f"交通: {plan['transport_details']}"
+                  f"({int(plan['travel_time'])}分鐘)")
+
+            # 只在需要時顯示導航資訊
+            if show_navigation and 'route_info' in plan:
+                print("\n前往下一站的導航:")
+                print(NavigationTranslator.format_navigation(
+                    plan['route_info']))
 
             total_travel_time += plan['travel_time']
             total_duration += plan['duration']
@@ -238,7 +373,10 @@ def main():
         )
 
         # 輸出結果
-        system.print_itinerary(result)
+        system.print_itinerary(result, show_navigation=False)
+
+        import pprint  # 更好的顯示方式
+        # pprint.pprint(result)  # 顯示原始資料結構
 
     except Exception as e:
         print(f"\n發生錯誤: {str(e)}")

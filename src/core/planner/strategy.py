@@ -282,7 +282,7 @@ class PlanningStrategy:
                                from_location: PlaceDetail,
                                to_location: PlaceDetail,
                                departure_time: datetime = None,
-                               use_api: bool = False) -> Dict[str, Any]:
+                               use_api: bool = True) -> Dict[str, Any]:
         """計算交通資訊
 
         兩種模式：

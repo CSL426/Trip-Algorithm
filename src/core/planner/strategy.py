@@ -253,17 +253,17 @@ class PlanningStrategy:
                 month=current_time.month,
                 day=current_time.day
             )
+            
+        # 用餐時段的時間範圍（前後半小時）
+        time_buffer = timedelta(minutes=30)
 
-        # 提前一小時開始尋找用餐地點
-        if lunch_time:
-            lunch_buffer = timedelta(hours=1)
-            if current_time >= lunch_time - lunch_buffer and current_time <= lunch_time + lunch_buffer:
-                return "lunch"
-
-        if dinner_time:
-            dinner_buffer = timedelta(hours=1)
-            if current_time >= dinner_time - dinner_buffer and current_time <= dinner_time + dinner_buffer:
-                return "dinner"
+        # 檢查午餐時間
+        if lunch_time and (lunch_time - time_buffer <= current_time <= lunch_time + time_buffer):
+            return "lunch"
+            
+        # 檢查晚餐時間
+        if dinner_time and (dinner_time - time_buffer <= current_time <= dinner_time + time_buffer):
+            return "dinner"
 
         # 其他時段判斷
         hour = current_time.hour
@@ -393,14 +393,30 @@ class PlanningStrategy:
         current_loc = current_location
         remaining_locations = available_locations.copy()
         visit_time = current_time
+        
+        # 追蹤用餐狀態
+        had_lunch = False
+        had_dinner = False
 
         while remaining_locations and visit_time < self.end_time:
-            # 1. 使用估算方式選出前三名
+            current_period = self._get_current_period(visit_time)
+            
+            # 用餐時段的特殊處理
+            if current_period == "lunch" and had_lunch:
+                # 已經吃過午餐，直接跳到下午時段
+                visit_time = visit_time + timedelta(hours=1)
+                continue
+                
+            if current_period == "dinner" and had_dinner:
+                # 已經吃過晚餐，直接跳到夜間時段
+                visit_time = visit_time + timedelta(hours=1)
+                continue
+
+            # 1. 選擇地點
             candidates = self._find_top_candidates(
                 current_loc,
                 remaining_locations,
-                visit_time,
-                top_n=3
+                visit_time
             )
 
             if not candidates:
@@ -418,12 +434,16 @@ class PlanningStrategy:
 
             location, travel_info = best_choice
 
-            # 3. 計算時間
-            arrival_time = visit_time + timedelta(minutes=travel_info['time'])
-            departure_time = arrival_time + \
-                timedelta(minutes=location.duration_min)
+            # 3. 更新用餐狀態
+            if current_period == "lunch":
+                had_lunch = True
+            elif current_period == "dinner":
+                had_dinner = True
 
-            # 4. 檢查是否超過結束時間
+            # 4. 計算時間和更新行程
+            arrival_time = visit_time + timedelta(minutes=travel_info['time'])
+            departure_time = arrival_time + timedelta(minutes=location.duration_min)
+
             if departure_time > self.end_time:
                 break
 
@@ -443,6 +463,12 @@ class PlanningStrategy:
             current_loc = location
             visit_time = departure_time
             remaining_locations.remove(location)
+
+        print(f"剩餘時間: {self.end_time - visit_time}")
+        print(f"是否還有地點: {len(remaining_locations)}")
+        print(f"當前時間狀態: {visit_time < self.end_time}")
+        if departure_time > self.end_time:
+            print(f"超過結束時間: {departure_time} > {self.end_time}")
 
         return itinerary
 
@@ -491,7 +517,13 @@ class PlanningStrategy:
 
         # 排序並選出前N名
         scored_locations.sort(key=lambda x: x[1], reverse=True)
-        return [loc for loc, _ in scored_locations[:top_n]]
+        top_locations = scored_locations[:top_n]
+        
+        # 隨機選一個
+        if top_locations:
+            return [random.choice([loc for loc, _ in top_locations])]
+        else:
+            return []
 
     def _select_best_candidate(self,
                                candidates: List[PlaceDetail],

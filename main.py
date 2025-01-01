@@ -12,7 +12,7 @@ import time
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
-from src.core.planner.base import TripPlanner
+from src.config.config import GOOGLE_MAPS_API_KEY
 from src.core.models import TripRequirement, PlaceDetail
 from data import TEST_LOCATIONS, TEST_REQUIREMENT, TEST_CUSTOM_START
 from src.core.utils.navigation_translator import NavigationTranslator
@@ -132,82 +132,209 @@ class TripPlanningSystem:
         except ValueError:
             return False
 
-    def plan_trip(self,
-                  locations: List[Dict],
-                  requirement: Dict,
-                  custom_start: Optional[Dict] = None) -> List[Dict]:
-        """執行行程規劃
+    def set_default_requirement(self, requirement: Dict) -> Dict:
+        """
+        設定行程需求的預設值
+
+        輸入:
+            requirement: 使用者輸入的需求字典，可能包含空值
+
+        輸出:
+            Dict: 處理後的需求字典，所有欄位都有合理的預設值
+
+        預設值邏輯:
+            - start_time: 預設 "09:00"
+            - end_time: 預設 "21:00"
+            - start_point: 預設 "台北車站"
+            - end_point: 預設 None (代表與起點相同)
+            - transport_mode: 預設 "driving"
+            - distance_threshold: 預設 30 (公里)
+            - breakfast_time: 預設 "none"
+            - lunch_time: 預設 "12:00"
+            - dinner_time: 預設 "18:00"
+            - budget: 預設 "none"
+            - date: 預設今天日期
+        """
+        from datetime import datetime, timedelta
+        
+        # 取得明天日期
+        tomorrow = datetime.now() + timedelta(days=1)
+        
+        # 交通方式對照表
+        transport_modes = {
+            "driving": "開車",
+            "transit": "大眾運輸",
+            "walking": "步行",
+            "bicycling": "騎腳踏車",
+        }
+
+        defaults = {
+            "start_time": "09:00",
+            "end_time": "21:00",
+            "start_point": "台北車站",
+            "end_point": None,
+            "transport_mode": "driving",
+            "distance_threshold": 30,
+            "breakfast_time": "none",
+            "lunch_time": "12:00",
+            "dinner_time": "18:00",
+            "budget": "none",
+            "date": tomorrow.strftime("%m-%d")
+        }
+
+        # 合併使用者輸入和預設值
+        result = defaults.copy()
+        for key, value in requirement.items():
+            if value is not None:  # 只覆蓋非 None 的值
+                result[key] = value
+                
+        # 轉換交通方式為中文
+        result["transport_mode_display"] = transport_modes.get(
+            result["transport_mode"], result["transport_mode"]
+        )
+
+        # 檢查時間合理性
+        if result["start_time"] >= result["end_time"]:
+            raise ValueError("結束時間必須晚於開始時間")
+
+        return result
+
+    def plan_trip(self, locations: List[Dict], requirement: Dict) -> List[Dict]:
+        """
+        執行行程規劃主函式
 
         輸入參數:
-            locations: 地點資料列表
-                格式: [{
-                    name: str,          # 地點名稱
-                    lat: float,         # 緯度
-                    lon: float,         # 經度
-                    duration: int,      # 建議停留時間(分鐘)
-                    label: str,         # 地點類型
-                    hours: dict         # 營業時間
-                }, ...]
-            requirement: 行程需求
-                格式: {
-                    start_time: str,    # 開始時間 (HH:MM)
-                    end_time: str,      # 結束時間 (HH:MM)
-                    start_point: str,   # 起點名稱
-                    transport_mode: str # 交通方式
-                }
-            custom_start: 自訂起點資訊(選填)
-                格式: {
-                    name: str,     # 地點名稱
-                    lat: float,    # 緯度
-                    lon: float     # 經度
-                }
-            need_navigation: bool - 是否需要導航資訊(預設False)
+            locations: 所有可用地點列表
+                每個地點需包含:
+                - name: 地點名稱
+                - lat: 緯度 
+                - lon: 經度
+                - rating: 評分
+                - label: 分類標籤
+                - period: 建議遊玩時段
+                - hours: 營業時間
 
-        回傳:
-            List[Dict]: 規劃後的行程列表,格式:
-            [{
-                step: int,              # 順序編號
-                name: str,              # 地點名稱
-                start_time: str,        # 到達時間 (HH:MM)
-                end_time: str,          # 離開時間 (HH:MM)
-                duration: int,          # 停留時間(分鐘)
-                transport_details: str,  # 交通方式說明
-                travel_time: float      # 交通時間(分鐘)
-            }]
+            requirement: 行程需求
+                - start_point: 起點名稱，None則預設為台北車站
+                - end_point: 終點名稱，None則與起點相同
+                - start_time: 開始時間 (HH:MM)
+                - end_time: 結束時間 (HH:MM)
+                - transport_mode: 交通方式
+                - distance_threshold: 距離限制(km)
+                - breakfast_time: 早餐時間(none或HH:MM)
+                - lunch_time: 午餐時間(none或HH:MM)
+                - dinner_time: 晚餐時間(none或HH:MM)
+
+        輸出:
+            List[Dict]: 規劃後的行程列表
+                每個行程包含:
+                - step: 順序編號
+                - name: 地點名稱
+                - start_time: 到達時間
+                - end_time: 離開時間 
+                - duration: 停留時間(分鐘)
+                - transport_details: 交通方式說明
+                - travel_time: 交通時間(分鐘)
 
         異常:
-            ValueError: 當資料格式不正確時
-            RuntimeError: 規劃失敗時
+            ValueError: 
+                - 無法取得起點或終點座標
+                - 地點資料格式錯誤
+                - 規劃失敗
         """
         start_time = time.time()
 
         try:
-            # 1. 資料驗證
+            # 先設定預設值
+            requirement = self.set_default_requirement(requirement)
+
+            # 初始化 Google Maps 服務
+            from src.core.services.google_maps import GoogleMapsService
+            maps_service = GoogleMapsService(GOOGLE_MAPS_API_KEY)
+
+            # 處理起點
+            start_point = requirement.get('start_point')
+            custom_start = None
+
+            if start_point is None or start_point == "台北車站":
+                # 使用預設的台北車站資訊
+                custom_start = PlaceDetail(
+                    name="台北車站",
+                    rating=0.0,
+                    lat=25.0466369,
+                    lon=121.5139236,
+                    duration_min=0,
+                    label='交通',
+                    period='morning',
+                    hours={i: [{'start': '00:00', 'end': '23:59'}]
+                           for i in range(1, 8)}
+                )
+                start_point = "台北車站"
+            else:
+                # 使用 API 取得其他起點座標
+                try:
+                    result = maps_service.geocode(start_point)
+                    custom_start = PlaceDetail(
+                        name=start_point,
+                        rating=0.0,
+                        lat=result['lat'],
+                        lon=result['lng'],
+                        duration_min=0,
+                        label='交通',
+                        period='morning',
+                        hours={i: [{'start': '00:00', 'end': '23:59'}]
+                               for i in range(1, 8)}
+                    )
+                except Exception as e:
+                    raise ValueError(f"無法取得起點座標: {str(e)}")
+
+            # 處理終點 - None 就使用起點資訊
+            end_point = requirement.get('end_point')
+            custom_end = None
+
+            if end_point is None:
+                custom_end = custom_start  # 直接使用起點資訊
+                requirement['end_point'] = start_point  # 更新 requirement
+            elif end_point != start_point:
+                try:
+                    result = maps_service.geocode(end_point)
+                    custom_end = PlaceDetail(
+                        name=end_point,
+                        rating=0.0,
+                        lat=result['lat'],
+                        lon=result['lng'],
+                        duration_min=0,
+                        label='交通',
+                        period='morning',
+                        hours={i: [{'start': '00:00', 'end': '23:59'}]
+                               for i in range(1, 8)}
+                    )
+                except Exception as e:
+                    raise ValueError(f"無法取得終點座標: {str(e)}")
+
+            # 資料驗證與初始化
             validated_locations = self.validate_locations(locations)
-            validated_requirement = self.validate_requirement(requirement)
+            self.planner.initialize_locations(
+                validated_locations, custom_start, custom_end)
 
-            # 2. 初始化地點資料
-            self.planner.initialize_locations(validated_locations,
-                                              custom_start=custom_start)
-
-            # 3. 建立起點行程
+            # 建立起點行程
             result = []
             start = {
                 'step': 0,
-                'name': validated_requirement.start_point,
-                'start_time': validated_requirement.start_time,
-                'end_time': validated_requirement.start_time,
+                'name': custom_start.name,
+                'start_time': requirement['start_time'],
+                'end_time': requirement['start_time'],
                 'duration': 0,
                 'transport_details': '起點',
                 'travel_time': 0
             }
             result.append(start)
 
-            # 4. 執行規劃
+            # 執行主要規劃
             main_itinerary = self.planner.plan(
-                start_time=validated_requirement.start_time,
-                end_time=validated_requirement.end_time,
-                travel_mode=validated_requirement.transport_mode,
+                start_time=requirement['start_time'],
+                end_time=requirement['end_time'],
+                travel_mode=requirement['transport_mode'],
                 requirement=requirement
             )
 
@@ -216,11 +343,11 @@ class TripPlanningSystem:
                 item['step'] = i
                 result.append(item)
 
-            # 5. 驗證並調整行程
+            # 驗證並調整行程
             result = self._verify_and_adjust_itinerary(
                 result,
-                validated_requirement.end_point,
-                validated_requirement.end_time
+                requirement['end_point'],
+                requirement['end_time']
             )
 
             self.execution_time = time.time() - start_time
@@ -232,7 +359,7 @@ class TripPlanningSystem:
 
     def _verify_and_adjust_itinerary(self,
                                      itinerary: List[Dict],
-                                     end_point: str,
+                                     end_point: Optional[str],
                                      end_time: str,
                                      min_duration: int = 30) -> List[Dict]:
         """驗證並調整行程,確保能返回終點
@@ -248,6 +375,10 @@ class TripPlanningSystem:
         """
         if len(itinerary) <= 1:  # 只有起點
             return itinerary
+
+        # 如果終點是 None，使用起點
+        if end_point is None:
+            end_point = itinerary[0]['name']
 
         while True:
             # 計算返回終點的時間
@@ -353,30 +484,35 @@ def main():
         # 建立規劃系統
         system = TripPlanningSystem()
 
+        # 處理預設值
+        processed_requirement = system.set_default_requirement(
+            TEST_REQUIREMENT
+        )
+
         # 顯示規劃參數
         print("=== 行程規劃系統 ===")
-        print(f"起點：{TEST_CUSTOM_START['name']}")
-        print(
-            f"時間：{TEST_REQUIREMENT['start_time']} - {TEST_REQUIREMENT['end_time']}")
-        print(f"午餐：{TEST_REQUIREMENT['lunch_time']}")
-        print(f"晚餐：{TEST_REQUIREMENT['dinner_time']}")
+        print(f"起點：{processed_requirement['start_point']}")
+        print(f"時間：{processed_requirement['start_time']} - "
+              f"{processed_requirement['end_time']}")
+        print(f"午餐：{processed_requirement['lunch_time']}")
+        print(f"晚餐：{processed_requirement['dinner_time']}")
         print(f"景點數量：{len(TEST_LOCATIONS)}個")
-        print(f"交通方式：{TEST_REQUIREMENT['transport_mode']}")
+        print(f"交通方式：{processed_requirement['transport_mode_display']}")
 
         print("\n開始規劃行程...")
 
         # 執行規劃
         result = system.plan_trip(
             locations=TEST_LOCATIONS,
-            requirement=TEST_REQUIREMENT,
-            custom_start=TEST_CUSTOM_START
+            requirement=processed_requirement,
         )
 
         # 輸出結果
         system.print_itinerary(result, show_navigation=False)
 
-        import pprint  # 更好的顯示方式
-        # pprint.pprint(result)  # 顯示原始資料結構
+        # 印出原始資料結構（如果需要的話）
+        # import pprint
+        # pprint.pprint(result)
 
     except Exception as e:
         print(f"\n發生錯誤: {str(e)}")

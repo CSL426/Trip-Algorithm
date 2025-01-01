@@ -110,37 +110,32 @@ class PlaceDetail(BaseModel):
         time_pattern = r'^([01][0-9]|2[0-3]):[0-5][0-9]$'
 
         for day, time_slots in v.items():
-            # 檢查星期格式
             if not isinstance(day, int) or not 1 <= day <= 7:
-                raise ValueError(f"日期必須是1-7之間的整數，收到 {day}")
+                raise ValueError(f"日期必須是1-7之間的整數: {day}")
 
-            # 檢查時段列表格式
             if not isinstance(time_slots, list):
-                raise ValueError(f"時段必須是列表格式，收到 {time_slots}")
+                raise ValueError(f"時段必須是列表格式: {time_slots}")
 
-            # 處理每個時段
             for slot in time_slots:
-                # 允許 None 表示公休
                 if slot is None:
                     continue
 
-                # 檢查時段格式
                 if not isinstance(slot, dict) or 'start' not in slot or 'end' not in slot:
-                    raise ValueError(f"時段必須包含 start 和 end，收到 {slot}")
+                    raise ValueError(f"時段必須包含 start 和 end: {slot}")
 
-                # 驗證時間格式
                 for key in ['start', 'end']:
                     if not re.match(time_pattern, slot[key]):
-                        raise ValueError(f"時間格式錯誤: {slot[key]}，必須為 HH:MM 格式")
+                        raise ValueError(f"時間格式錯誤: {slot[key]}")
 
-                # 驗證時間順序
-                start = datetime.strptime(slot['start'], '%H:%M').time()
-                end = datetime.strptime(slot['end'], '%H:%M').time()
+                # 處理跨日情況
+                start_time = datetime.strptime(slot['start'], '%H:%M').time()
+                end_time = datetime.strptime(slot['end'], '%H:%M').time()
 
-                # 特殊處理：凌晨結束的情況
-                if end == time(0, 0):
-                    end = time(23, 59)
-                elif end < start:
+                # 結束時間小於開始時間，視為跨日營業
+                if end_time < start_time:
+                    continue
+
+                if start_time >= end_time:
                     raise ValueError(f"結束時間必須晚於開始時間: {slot}")
 
         return v

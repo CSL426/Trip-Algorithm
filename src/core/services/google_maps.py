@@ -182,3 +182,29 @@ class GoogleMapsService(TravelTimeCalculator):
     def clear_cache(self):
         """清除路線查詢快取"""
         self._cached_directions.cache_clear()
+
+    def geocode(self, address: str) -> Dict[str, float]:
+        """
+        將地址轉換為經緯度座標
+
+        輸入:
+            address: str - 地址或地點名稱
+
+        輸出:
+            Dict[str, float]: {'lat': 緯度, 'lng': 經度}
+
+        異常:
+            RuntimeError: API呼叫失敗
+        """
+        try:
+            result = self.client.geocode(address)
+            if not result:
+                raise RuntimeError(f"找不到地點: {address}")
+
+            location = result[0]['geometry']['location']
+            return {
+                'lat': location['lat'],
+                'lng': location['lng']
+            }
+        except Exception as e:
+            raise RuntimeError(f"地理編碼錯誤: {str(e)}")

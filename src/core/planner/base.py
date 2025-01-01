@@ -232,12 +232,16 @@ class TripPlanner:
 
         回傳:
             Optional[PlaceDetail]: 找到的地點資訊,找不到則回傳 None
+
+        異常:
+            ValueError: 地點名稱為空時
         """
-        # 檢查起點
+        if not name:
+            raise ValueError("地點名稱不能為空")
+
         if self.start_location and self.start_location.name == name:
             return self.start_location
 
-        # 檢查終點
         if self.end_location and self.end_location.name == name:
             return self.end_location
 
@@ -246,7 +250,7 @@ class TripPlanner:
             if location.name == name:
                 return location
 
-        return None
+        return None  # 找不到則回傳 None
 
     def get_travel_info(self,
                         from_location: PlaceDetail,

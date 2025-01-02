@@ -163,3 +163,44 @@ class InputValidator:
         """
         if mode not in self.VALID_TRANSPORT_MODES:
             raise ValueError(f"不支援的交通方式：{mode}")
+
+    def set_default_requirement(self, requirement: Dict) -> Dict:
+        """設定預設的行程需求值
+
+        輸入:
+            requirement: 原始需求字典
+
+        回傳:
+            Dict: 包含預設值的需求字典
+        """
+        default_values = {
+            "start_time": "09:00",
+            "end_time": "21:00",
+            "start_point": "台北車站",
+            "end_point": None,
+            "transport_mode": "driving",
+            "transport_mode_display": "開車",
+            "distance_threshold": 30,
+            "breakfast_time": "none",
+            "lunch_time": "12:00",
+            "dinner_time": "18:00",
+            "budget": "none",
+            "date": "12-25"
+        }
+
+        # 合併預設值和使用者輸入
+        processed = default_values.copy()
+        if requirement:
+            processed.update(
+                {k: v for k, v in requirement.items() if v is not None})
+
+        # 設定交通方式顯示文字
+        if requirement and requirement.get('transport_mode'):
+            processed['transport_mode_display'] = {
+                'transit': '大眾運輸',
+                'driving': '開車',
+                'walking': '步行',
+                'bicycling': '騎車'
+            }.get(requirement['transport_mode'], requirement['transport_mode'])
+
+        return processed

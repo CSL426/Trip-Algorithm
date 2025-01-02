@@ -1,6 +1,6 @@
 # main.py
 
-from time import time
+import time
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from src.core.planner.base import TripPlanner

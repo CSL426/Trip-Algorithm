@@ -75,25 +75,44 @@ class ScoringSystem:
         """計算效率評分
 
         考慮:
-        1. 距離
-        2. 交通時間
-        3. 停留時間價值
-        """
-        distance = current_location.calculate_distance(location)
+        1. 距離 - 距離越遠分數越低
+        2. 交通時間 - 交通時間越長分數越低
+        3. 停留時間價值 - 停留時間越長權重越高
 
+        輸入:
+            location: 目標地點
+            current_location: 當前位置
+            travel_time: 交通時間(分鐘)
+
+        回傳:
+            float: 0-1之間的效率評分
+        """
+        # 計算距離
+        distance = location.calculate_distance(current_location)
+
+        # 如果超過最大距離限制，直接回傳 0
         if distance > self.distance_threshold:
             return 0.0
-
-        # 根據停留時間調整權重
-        k = 2.0 if location.duration_min >= 120 else \
-            1.5 if location.duration_min >= 60 else 1.0
 
         # 避免除以零
         if distance == 0 or travel_time == 0:
             return 1.0
 
-        # 計算效率值並標準化
-        efficiency = k / (distance * travel_time)
+        # 根據停留時間調整權重 k
+        # - 停留超過2小時的景點 k=2.0，表示值得遠行
+        # - 停留1-2小時的景點 k=1.5
+        # - 停留不到1小時的景點 k=1.0，表示不值得遠行
+        k = 2.0 if location.duration_min >= 120 else \
+            1.5 if location.duration_min >= 60 else 1.0
+
+        # 計算距離權重 (距離越遠權重越低)
+        distance_weight = max(0, 1 - (distance / self.distance_threshold))
+
+        # 計算效率值
+        # 效率 = k * 停留時間 * 距離權重 / 交通時間
+        efficiency = k * location.duration_min * distance_weight / travel_time
+
+        # 標準化到 0-1 之間
         return min(1.0, efficiency / 0.1)
 
     def _calculate_period_score(self,
@@ -124,3 +143,54 @@ class ScoringSystem:
             return 0.7
 
         return 0.3
+
+    def _calculate_time_score(self, location: PlaceDetail) -> float:
+        """計算營業時間配合度評分
+
+        輸入:
+            location: 地點資訊
+
+        回傳:
+            float: 0-1之間的評分
+            - 1.0: 營業中且有充足時間
+            - 0.8: 營業中但時間較緊
+            - 0.0: 未營業
+        """
+        weekday = self.current_time.weekday() + 1
+        time_str = self.current_time.strftime(TimeCore.TIME_FORMAT)
+
+        if not location.is_open_at(weekday, time_str):
+            return 0.0
+
+        if location.duration_min == 0:
+            return 1.0
+
+        # 檢查是否接近打烊時間
+        for slot in location.hours.get(weekday, []):
+            if slot is None:
+                continue
+
+            # 使用 TimeCore 解析時間
+            close_time = datetime.strptime(
+                slot['end'], TimeCore.TIME_FORMAT).time()
+            current = self.current_time.time()
+
+            # 如果這是當前的營業時段
+            if TimeCore.is_time_in_range(current,
+                                         datetime.strptime(
+                                             slot['start'], TimeCore.TIME_FORMAT).time(),
+                                         close_time):
+
+                remaining_minutes = TimeCore.calculate_duration(
+                    current,
+                    close_time,
+                    allow_overnight=True
+                )
+
+                if remaining_minutes < 60:  # 剩不到1小時
+                    return 0.7
+                if remaining_minutes < location.duration_min:  # 剩餘時間不足建議停留時間
+                    return 0.8
+                return 1.0
+
+        return 0.0

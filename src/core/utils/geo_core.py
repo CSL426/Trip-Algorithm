@@ -2,7 +2,6 @@
 
 import math
 from typing import Dict, Tuple, Union
-from src.core.models.place import PlaceDetail
 
 
 class GeoCore:
@@ -33,23 +32,21 @@ class GeoCore:
             raise ValueError(f"經度必須在-180到180度之間：{lon}")
 
     @classmethod
-    def calculate_distance(cls,
-                           loc1: Union[Dict[str, float], PlaceDetail],
-                           loc2: Union[Dict[str, float], PlaceDetail]) -> float:
+    def calculate_distance(cls, loc1: Dict[str, float], loc2: Dict[str, float]) -> float:
         """計算兩點間距離
 
         輸入:
-            loc1: 第一個位置(包含lat/lon)
-            loc2: 第二個位置(包含lat/lon)
+            loc1: 第一個位置，需包含 lat 和 lon
+            loc2: 第二個位置，需包含 lat 和 lon
 
         回傳:
             float: 距離(公里)
         """
         # 取得座標
-        lat1 = loc1['lat'] if isinstance(loc1, dict) else loc1.lat
-        lon1 = loc1['lon'] if isinstance(loc1, dict) else loc1.lon
-        lat2 = loc2['lat'] if isinstance(loc2, dict) else loc2.lat
-        lon2 = loc2['lon'] if isinstance(loc2, dict) else loc2.lon
+        lat1 = loc1['lat']
+        lon1 = loc1['lon']
+        lat2 = loc2['lat']
+        lon2 = loc2['lon']
 
         # 驗證座標
         cls.validate_coordinate(lat1, lon1)

@@ -33,12 +33,6 @@ class TimeCore:
 
         回傳:
             bool: 格式正確回傳 True，否則回傳 False
-
-        使用範例:
-            >>> TimeCore.validate_time_str("09:30")
-            True
-            >>> TimeCore.validate_time_str("25:00")
-            False
         """
         if not isinstance(time_str, str):
             return False
@@ -57,9 +51,6 @@ class TimeCore:
 
         異常:
             ValueError: 當時間格式不正確時拋出
-
-        使用範例:
-            >>> start, end = TimeCore.parse_time_range("09:00", "17:30")
         """
         if not (cls.validate_time_str(start_str) and cls.validate_time_str(end_str)):
             raise ValueError(f"時間格式錯誤: {start_str} 或 {end_str}")
@@ -84,13 +75,6 @@ class TimeCore:
 
         回傳:
             bool: 在範圍內回傳 True，否則回傳 False
-
-        使用範例:
-            >>> start = datetime.strptime("09:00", "%H:%M").time()
-            >>> end = datetime.strptime("17:00", "%H:%M").time()
-            >>> check = datetime.strptime("13:00", "%H:%M").time()
-            >>> TimeCore.is_time_in_range(check, start, end)
-            True
         """
         if not allow_overnight:
             return start_time <= check_time <= end_time
@@ -100,3 +84,44 @@ class TimeCore:
         else:
             # 處理跨夜情況，例如 23:00-02:00
             return check_time >= start_time or check_time <= end_time
+
+    @classmethod
+    def add_minutes(cls, t: time, minutes: int) -> time:
+        """增加或減少分鐘數
+
+        輸入:
+            t: time 物件
+            minutes: 要增加的分鐘數（可以是負數）
+
+        回傳:
+            time: 調整後的時間
+        """
+        # 將 time 轉換為 datetime 以便計算
+        dt = datetime.combine(datetime.min, t)
+
+        # 加上分鐘數
+        dt = dt + timedelta(minutes=minutes)
+
+        # 取出調整後的 time
+        return dt.time()
+
+    @classmethod
+    def calculate_duration(cls, start: time, end: time, allow_overnight: bool = False) -> int:
+        """計算時間區間的長度（分鐘）
+
+        輸入:
+            start: 開始時間
+            end: 結束時間
+            allow_overnight: 是否允許跨夜
+
+        回傳:
+            int: 時間差（分鐘）
+        """
+        start_minutes = start.hour * 60 + start.minute
+        end_minutes = end.hour * 60 + end.minute
+
+        if end_minutes < start_minutes and allow_overnight:
+            # 跨夜情況，加上一天的分鐘數
+            return (24 * 60 - start_minutes) + end_minutes
+
+        return end_minutes - start_minutes

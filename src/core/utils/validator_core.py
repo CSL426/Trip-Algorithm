@@ -43,4 +43,14 @@ class ValidatorCore:
                 if not isinstance(slot, dict):
                     raise ValueError(f"時段格式錯誤：{slot}")
 
-                TimeCore.validate_time_range(slot['start'], slot['end'])
+                # 驗證開始和結束時間格式
+                if not TimeCore.validate_time_str(slot['start']):
+                    raise ValueError(f"開始時間格式錯誤：{slot['start']}")
+                if not TimeCore.validate_time_str(slot['end']):
+                    raise ValueError(f"結束時間格式錯誤：{slot['end']}")
+
+                # 驗證時間順序
+                try:
+                    TimeCore.parse_time_range(slot['start'], slot['end'])
+                except ValueError as e:
+                    raise ValueError(f"時間範圍錯誤：{e}")

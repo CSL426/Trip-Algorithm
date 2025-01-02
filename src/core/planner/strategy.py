@@ -130,47 +130,37 @@ class PlanningStrategy:
                                  available_locations: List[PlaceDetail],
                                  visit_time: datetime,
                                  is_meal_time: bool) -> Optional[Tuple[PlaceDetail, Dict]]:
-        """尋找最佳的下一個地點
-
-        輸入:
-            current_loc: 當前位置
-            available_locations: 可選地點列表
-            visit_time: 當前時間
-            is_meal_time: 是否為用餐時間
-
-        回傳:
-            Optional[Tuple[PlaceDetail, Dict]]: (選中的地點, 交通資訊)
-            若所有地點都不合適則回傳 None
-        """
+        """尋找最佳的下一個地點"""
         scored_locations = []
 
         for location in available_locations:
-            # 使用 Google Maps 計算實際交通資訊
-            travel_info = self._calculate_travel_info(
-                current_loc,
-                location,
-                visit_time
-            )
-
-            # 使用評分系統計算分數
+            # 先用評分系統計算分數（使用直線距離）
             score = self.scoring_system.calculate_total_score(
                 location=location,
                 current_location=current_loc,
-                travel_time=travel_info['time'],
+                travel_time=0,  # 先不考慮實際交通時間
                 is_meal_time=is_meal_time
             )
 
             if score > float('-inf'):
-                scored_locations.append((location, score, travel_info))
+                scored_locations.append((location, score))
 
         if not scored_locations:
             return None
 
-        # 選擇分數最高的地點
+        # 排序並隨機選擇前3名其中之一
         scored_locations.sort(key=lambda x: x[1], reverse=True)
-        best_location, _, best_travel_info = scored_locations[0]
+        top_locations = scored_locations[:3]
+        selected_location, _ = random.choice(top_locations)
 
-        return best_location, best_travel_info
+        # 計算選中地點的實際交通資訊
+        travel_info = self._calculate_travel_info(
+            current_loc,
+            selected_location,
+            visit_time
+        )
+
+        return selected_location, travel_info
 
     def _check_meal_time(self,
                          current_time: datetime,
@@ -523,75 +513,72 @@ class PlanningStrategy:
     def _calculate_travel_info(self,
                                from_location: PlaceDetail,
                                to_location: PlaceDetail,
-                               departure_time: datetime = None,
-                               use_api: bool = True) -> Dict[str, Any]:
+                               departure_time: datetime = None) -> Dict:
         """計算交通資訊
 
-        兩種模式：
-        1. 快速模式(use_api=False)：使用直線距離和預設速度估算
-        2. 精確模式(use_api=True)：使用 Google Maps API 查詢實際路線
-
-        輸入參數:
+        輸入:
             from_location: 起點
             to_location: 終點
-            departure_time: 出發時間(預設為現在)
-            use_api: 是否使用 Google Maps API
+            departure_time: 出發時間
 
         回傳:
-            Dict[str, Any]: {
-                'time': float,                # 交通時間(分鐘)
-                'transport_details': str,      # 交通方式說明
-                'distance_km': float,         # 距離(公里)
-                'route_info': Dict            # 詳細路線資訊(若使用API)
+            Dict: {
+                'time': float,              # 交通時間(分鐘)
+                'transport_details': str,    # 交通方式說明
+                'distance_km': float,       # 距離(公里)
+                'route_info': Dict          # Google Maps 路線資訊
             }
         """
-        # 計算直線距離
-        distance = self._calculate_distance(from_location, to_location)
+        # 先使用直線距離估算
+        distance = from_location.calculate_distance(to_location)
 
-        # 使用 Google Maps API
-        if use_api and self.maps_service:
+        # 如果距離太遠，直接回傳估算結果，不呼叫 API
+        if distance > self.distance_threshold:
+            speed = self._get_estimated_speed()
+            est_time = (distance / speed) * 60
+            return {
+                'time': round(est_time),
+                'distance_km': distance,
+                'transport_details': self._get_transport_display(),
+                'route_info': None
+            }
+
+        # 距離在合理範圍內才使用 Google Maps API
+        if self.maps_service:
             try:
-                # 確保時間是未來時間
-                current_time = datetime.now()
-                query_time = departure_time if departure_time and departure_time > current_time else current_time
+                now = datetime.now()
+                query_time = max(now + timedelta(minutes=1),
+                                 departure_time if departure_time else now)
+
+                origin = (float(from_location.lat), float(from_location.lon))
+                destination = (float(to_location.lat), float(to_location.lon))
 
                 route = self.maps_service.calculate_travel_time(
-                    origin=(from_location.lat, from_location.lon),
-                    destination=(to_location.lat, to_location.lon),
+                    origin=origin,
+                    destination=destination,
                     mode=self.travel_mode,
                     departure_time=query_time
                 )
 
-                return {
-                    'time': route['duration_minutes'],
-                    'distance_km': route['distance_meters'] / 1000,
-                    'transport_details': self._get_transport_display(),
-                    'route_info': route
-                }
-
+                if route:  # 確保有得到結果
+                    return {
+                        'time': route['duration_minutes'],
+                        'distance_km': route['distance_meters'] / 1000,
+                        'transport_details': self._get_transport_display(),
+                        'route_info': route
+                    }
             except Exception as e:
                 print(f"警告：Google Maps 路線查詢失敗: {str(e)}")
-                # 發生錯誤時退回使用估算方式
 
-        # 使用預設速度估算
-        speeds = {
-            'transit': 30,  # 大眾運輸速度約 30 km/h
-            'driving': 40,  # 開車速度約 40 km/h
-            'bicycling': 15,  # 自行車速度約 15 km/h
-            'walking': 5   # 步行速度約 5 km/h
-        }
-        speed = speeds.get(self.travel_mode, 30)  # 預設使用 30 km/h
-        est_time = (distance / speed) * 60  # 轉換為分鐘
-
-        # 加入一些交通延遲的考量
-        if distance > 10:  # 距離超過 10 公里
-            est_time *= 1.2  # 增加 20% 的時間作為交通延遲
+        # 如果 API 失敗或沒有 maps_service，使用估算
+        speed = self._get_estimated_speed()
+        est_time = (distance / speed) * 60
 
         return {
-            'time': round(est_time),  # 四捨五入到整數分鐘
+            'time': round(est_time),
             'distance_km': distance,
             'transport_details': self._get_transport_display(),
-            'route_info': None  # 不使用實際路線資訊
+            'route_info': None
         }
 
     def _get_transport_display(self) -> str:

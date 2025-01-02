@@ -1,6 +1,6 @@
 # src/core/models/place.py
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, time
 from src.core.utils.geo_core import GeoCore
@@ -232,3 +232,33 @@ class PlaceDetail(BaseModel):
         start, end = TimeCore.parse_time_range(start_str, end_str)
 
         return TimeCore.is_time_in_range(current_time.time(), start, end)
+
+    def calculate_distance(self, other: Union['PlaceDetail', Dict]) -> float:
+        """計算與另一個地點的距離
+
+        輸入:
+            other: 另一個地點，可以是 PlaceDetail 物件或包含 lat/lon 的字典
+
+        回傳:
+            float: 距離(公里)
+        """
+        # 將自己的座標轉換為字典格式
+        self_dict = {
+            'lat': float(self.lat),  # 確保是浮點數
+            'lon': float(self.lon)
+        }
+
+        # 如果另一個地點是字典，直接使用
+        if isinstance(other, dict):
+            other_dict = {
+                'lat': float(other['lat']),  # 確保是浮點數
+                'lon': float(other['lon'])
+            }
+        else:
+            # 如果是 PlaceDetail 物件，轉換為字典
+            other_dict = {
+                'lat': float(other.lat),
+                'lon': float(other.lon)
+            }
+
+        return GeoCore.calculate_distance(self_dict, other_dict)

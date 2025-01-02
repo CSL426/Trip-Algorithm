@@ -1,10 +1,11 @@
 # src/core/planner/strategy.py
 
 from datetime import datetime, timedelta
+import random
 from typing import Any, List, Dict, Optional, Tuple
+from src.core.evaluator.place_scoring import PlaceScoring
 from src.core.models.place import PlaceDetail
-from src.core.evaluator.scoring_system import ScoringSystem
-from src.core.utils.time_core import TimeCore
+from src.core.services.time_service import TimeService
 from src.core.services.google_maps import GoogleMapsService
 
 
@@ -38,9 +39,11 @@ class PlanningStrategy:
         self.travel_mode = travel_mode
         self.distance_threshold = distance_threshold
         self.requirement = requirement or {}
-
-        # 初始化評分系統
-        self.scoring_system = ScoringSystem(start_time, distance_threshold)
+        self.time_service = TimeService(
+            lunch_time=requirement.get('lunch_time'),
+            dinner_time=requirement.get('dinner_time')
+        )
+        self.place_scoring = PlaceScoring(self.time_service)
 
         # 初始化 Google Maps 服務
         try:
@@ -54,36 +57,36 @@ class PlanningStrategy:
                 current_location: PlaceDetail,
                 available_locations: List[PlaceDetail],
                 current_time: datetime) -> List[Dict[str, Any]]:
-        """執行行程規劃
+        """
+        執行行程規劃
 
-        輸入:
+        參數：
             current_location: 當前位置
             available_locations: 可選擇的地點列表
             current_time: 當前時間
 
-        回傳:
-            List[Dict]: 規劃後的行程清單
+        回傳：
+            List[Dict]: 規劃後的行程清單，每個行程包含：
+            - step: 順序編號
+            - name: 地點名稱
+            - start_time: 到達時間
+            - end_time: 離開時間
+            - duration: 停留時間（分鐘）
+            - transport_details: 交通方式說明
+            - travel_time: 交通時間（分鐘）
+            - route_info: 路線資訊（選填）
         """
         itinerary = []
         current_loc = current_location
         remaining_locations = available_locations.copy()
         visit_time = current_time
 
-        # 追蹤用餐狀態
-        had_lunch = False
-        had_dinner = False
-
         while remaining_locations and visit_time < self.end_time:
-            # 檢查用餐時間
-            is_meal_time = self._check_meal_time(
-                visit_time, had_lunch, had_dinner)
-
-            # 選擇下一個地點
+            # 尋找下一個最佳地點
             next_place = self._find_best_next_location(
                 current_loc,
                 remaining_locations,
-                visit_time,
-                is_meal_time
+                visit_time
             )
 
             if not next_place:
@@ -91,18 +94,12 @@ class PlanningStrategy:
 
             location, travel_info = next_place
 
-            # 更新用餐狀態
-            if is_meal_time and location.label in ['餐廳', '小吃']:
-                if self._is_lunch_time(visit_time):
-                    had_lunch = True
-                else:
-                    had_dinner = True
-
-            # 更新時間和行程
+            # 計算時間
             arrival_time = visit_time + timedelta(minutes=travel_info['time'])
             departure_time = arrival_time + \
                 timedelta(minutes=location.duration_min)
 
+            # 檢查是否超過結束時間
             if departure_time > self.end_time:
                 break
 
@@ -128,63 +125,49 @@ class PlanningStrategy:
     def _find_best_next_location(self,
                                  current_loc: PlaceDetail,
                                  available_locations: List[PlaceDetail],
-                                 visit_time: datetime,
-                                 is_meal_time: bool) -> Optional[Tuple[PlaceDetail, Dict]]:
-        """尋找最佳的下一個地點"""
+                                 visit_time: datetime) -> Optional[Tuple[PlaceDetail, Dict]]:
+        """
+        尋找最佳的下一個地點
+
+        參數：
+            current_loc: 當前位置
+            available_locations: 可選擇的地點列表
+            visit_time: 當前時間
+
+        回傳：
+            Tuple[PlaceDetail, Dict]: (選中的地點, 交通資訊)
+            如果沒有合適的地點則回傳 None
+        """
         scored_locations = []
 
         for location in available_locations:
-            # 先用評分系統計算分數（使用直線距離）
-            score = self.scoring_system.calculate_total_score(
-                location=location,
+            # 計算交通資訊
+            travel_info = self._calculate_travel_info(
+                current_loc,
+                location,
+                visit_time
+            )
+
+            # 計算評分
+            score = self.place_scoring.calculate_score(
+                place=location,
                 current_location=current_loc,
-                travel_time=0,  # 先不考慮實際交通時間
-                is_meal_time=is_meal_time
+                current_time=visit_time,
+                travel_time=travel_info['time']
             )
 
             if score > float('-inf'):
-                scored_locations.append((location, score))
+                scored_locations.append((location, score, travel_info))
 
         if not scored_locations:
             return None
 
-        # 排序並隨機選擇前3名其中之一
+        # 排序並隨機選擇前3名之一
         scored_locations.sort(key=lambda x: x[1], reverse=True)
         top_locations = scored_locations[:3]
-        selected_location, _ = random.choice(top_locations)
+        selected = random.choice(top_locations)
 
-        # 計算選中地點的實際交通資訊
-        travel_info = self._calculate_travel_info(
-            current_loc,
-            selected_location,
-            visit_time
-        )
-
-        return selected_location, travel_info
-
-    def _check_meal_time(self,
-                         current_time: datetime,
-                         had_lunch: bool,
-                         had_dinner: bool) -> bool:
-        """檢查是否為用餐時間
-
-        輸入:
-            current_time: 當前時間
-            had_lunch: 是否已用午餐
-            had_dinner: 是否已用晚餐
-
-        回傳:
-            bool: 是否為用餐時間
-        """
-        # 檢查午餐時間
-        if not had_lunch and self._is_lunch_time(current_time):
-            return True
-
-        # 檢查晚餐時間
-        if not had_dinner and self._is_dinner_time(current_time):
-            return True
-
-        return False
+        return selected[0], selected[2]
 
     def _calculate_travel_info(self,
                                from_location: PlaceDetail,
@@ -236,36 +219,6 @@ class PlanningStrategy:
             'route_info': None
         }
 
-    def _is_lunch_time(self, current_time: datetime) -> bool:
-        """檢查是否為午餐時間"""
-        if not self.requirement.get('lunch_time'):
-            return False
-
-        lunch_time = datetime.strptime(
-            self.requirement['lunch_time'], '%H:%M').time()
-        current = current_time.time()
-
-        # 檢查是否在午餐時間前後30分鐘內
-        start = TimeCore.add_minutes(lunch_time, -30)
-        end = TimeCore.add_minutes(lunch_time, 30)
-
-        return TimeCore.is_time_in_range(current, start, end)
-
-    def _is_dinner_time(self, current_time: datetime) -> bool:
-        """檢查是否為晚餐時間"""
-        if not self.requirement.get('dinner_time'):
-            return False
-
-        dinner_time = datetime.strptime(
-            self.requirement['dinner_time'], '%H:%M').time()
-        current = current_time.time()
-
-        # 檢查是否在晚餐時間前後30分鐘內
-        start = TimeCore.add_minutes(dinner_time, -30)
-        end = TimeCore.add_minutes(dinner_time, 30)
-
-        return TimeCore.is_time_in_range(current, start, end)
-
     def _get_transport_display(self) -> str:
         """取得交通方式的顯示文字"""
         return {
@@ -283,303 +236,6 @@ class PlanningStrategy:
             'bicycling': 15,  # 騎車 15 km/h
             'walking': 5    # 步行 5 km/h
         }.get(self.travel_mode, 30)
-
-    def _calculate_location_score(self,
-                                  location: PlaceDetail,
-                                  current_location: PlaceDetail,
-                                  current_time: datetime,
-                                  travel_time: float) -> float:
-        """計算地點的綜合評分
-
-        考慮因素：
-        1. 地點評分(rating) - 30%
-        2. 交通時間合理性 - 30%
-        3. 時段適合度 - 20%
-        4. 營業時間配合度 - 20%
-
-        輸入參數:
-            location: 要評分的地點
-            current_location: 目前位置
-            current_time: 當前時間
-            travel_time: 預估交通時間(分鐘)
-
-        回傳:
-            float: 0~1之間的評分，或 -1 表示不合適
-        """
-        try:
-            # 計算實際抵達時間
-            arrival_time = current_time + timedelta(minutes=travel_time)
-            departure_time = arrival_time + \
-                timedelta(minutes=location.duration_min)
-
-            # 1. 檢查基本條件
-            # 檢查是否超過結束時間
-            if departure_time > self.end_time:
-                return -1
-
-            # 檢查營業時間
-            weekday = current_time.weekday() + 1  # 1-7 代表週一到週日
-            time_str = arrival_time.strftime('%H:%M')
-            if not location.is_open_at(weekday, time_str):
-                return -1
-
-            # 2. 計算各項分數
-
-            # 2.1 評分分數 (0-5分轉換為0-1分)
-            rating_score = min(1.0, location.rating / 5.0)
-
-            # 2.2 交通時間分數
-            # 交通時間超過2小時視為不合理
-            max_travel_time = 120
-            travel_score = max(0, 1 - (travel_time / max_travel_time))
-
-            # 2.3 時段適合度分數
-            period_score = 1.0 if location.is_suitable_for_current_time(
-                arrival_time) else 0.3
-
-            # 2.4 營業時間配合度分數
-            time_score = 0.0
-            if location.duration_min > 0:
-                hours = location.hours.get(weekday, [])
-                if hours and hours[0]:
-                    for slot in hours:
-                        if slot:
-                            end_time = datetime.strptime(
-                                slot['end'], '%H:%M').time()
-                            end_datetime = datetime.combine(
-                                arrival_time.date(), end_time)
-                            if end_datetime > departure_time:
-                                remaining_time = (
-                                    end_datetime - departure_time).total_seconds() / 3600
-                                time_score = min(
-                                    1.0, remaining_time / 2)  # 至少還有2小時最理想
-                                break
-            else:
-                time_score = 1.0
-
-            # 3. 計算加權總分
-            final_score = (
-                rating_score * 0.3 +
-                travel_score * 0.3 +
-                period_score * 0.2 +
-                time_score * 0.2
-            )
-
-            return final_score
-
-        except Exception as e:
-            print(f"評分計算錯誤 ({location.name}): {str(e)}")
-            return -1  # 發生錯誤時回傳 -1
-
-    def _calculate_distance(self,
-                            from_location: PlaceDetail,
-                            to_location: PlaceDetail) -> float:
-        """計算兩個地點之間的直線距離
-
-        使用 Haversine 公式計算球面上兩點間的最短距離
-
-        輸入參數:
-            from_location: 起點位置
-                PlaceDetail 物件，需包含：
-                - lat: 緯度
-                - lon: 經度
-            to_location: 終點位置
-                PlaceDetail 物件，需包含：
-                - lat: 緯度
-                - lon: 經度
-
-        回傳:
-            float: 兩點間的直線距離(公里)
-        """
-        try:
-            # 檢查輸入物件是否有效
-            if not isinstance(from_location, PlaceDetail) or not isinstance(to_location, PlaceDetail):
-                raise ValueError("輸入必須是 PlaceDetail 物件")
-
-            # 呼叫 GeoCalculator 的 calculate_distance 方法
-            distance = self.geo_calculator.calculate_distance(
-                from_location,  # 起點
-                to_location    # 終點
-            )
-
-            return float(distance)  # 確保回傳浮點數
-
-        except Exception as e:
-            print(
-                f"距離計算錯誤 ({from_location.name} -> {to_location.name}): {str(e)}")
-            return float('inf')  # 回傳無限大表示不可達
-
-    def _filter_locations_by_period(self,
-                                    locations: List[PlaceDetail],
-                                    period: str) -> List[PlaceDetail]:
-        """篩選特定時段的地點
-
-        依據時段標記篩選適合的地點：
-        1. 對應時段的景點
-        2. 餐廳在用餐時段會被優先選擇
-        3. 24小時營業的地點可以在任何時段被選擇
-
-        輸入參數:
-            locations: 所有可選地點列表
-            period: 目標時段 (morning/lunch/afternoon/dinner/night)
-
-        回傳:
-            List[PlaceDetail]: 符合時段的地點列表
-        """
-        filtered = []
-        for loc in locations:
-            # 檢查是否為24小時營業
-            is_24h = False
-            try:
-                is_24h = all(
-                    isinstance(slot, list) and slot and
-                    isinstance(slot[0], dict) and
-                    slot[0].get('start') == '00:00' and
-                    slot[0].get('end') == '23:59'
-                    for day, slot in loc.hours.items()
-                    if slot is not None
-                )
-            except Exception as e:
-                print(f"檢查24小時營業時發生錯誤 ({loc.name}): {str(e)}")
-                is_24h = False
-
-            # 用餐時間優先選擇餐廳
-            if period in ['lunch', 'dinner']:
-                if loc.label in ['餐廳', '小吃', '夜市']:
-                    filtered.append(loc)
-                continue
-
-            # 其他時段：符合時段或24小時營業
-            if loc.period == period or is_24h:
-                filtered.append(loc)
-
-        return filtered
-
-    def _get_current_period(self, current_time: datetime) -> str:
-        """判斷當前時段
-
-        依據時間判斷應該安排什麼類型的景點，考慮：
-        1. 用餐時間優先安排餐廳
-        2. 依時間切分成早上、下午、晚上等時段
-
-        輸入參數:
-            current_time: 當前時間
-
-        回傳:
-            str: 時段標記(morning/lunch/afternoon/dinner/night)
-        """
-        # 檢查是否接近用餐時間
-        lunch_time = None
-        dinner_time = None
-
-        if self.requirement.get('lunch_time') and self.requirement['lunch_time'] != 'none':
-            lunch_time = datetime.strptime(self.requirement['lunch_time'], '%H:%M').replace(
-                year=current_time.year,
-                month=current_time.month,
-                day=current_time.day
-            )
-
-        if self.requirement.get('dinner_time') and self.requirement['dinner_time'] != 'none':
-            dinner_time = datetime.strptime(self.requirement['dinner_time'], '%H:%M').replace(
-                year=current_time.year,
-                month=current_time.month,
-                day=current_time.day
-            )
-
-        # 用餐時段的時間範圍（前後半小時）
-        time_buffer = timedelta(minutes=30)
-
-        # 檢查午餐時間
-        if lunch_time and (lunch_time - time_buffer <= current_time <= lunch_time + time_buffer):
-            return "lunch"
-
-        # 檢查晚餐時間
-        if dinner_time and (dinner_time - time_buffer <= current_time <= dinner_time + time_buffer):
-            return "dinner"
-
-        # 其他時段判斷
-        hour = current_time.hour
-        if hour < 11:
-            return "morning"
-        elif hour < 14:
-            return "lunch"
-        elif hour < 17:
-            return "afternoon"
-        elif hour < 19:
-            return "dinner"
-        else:
-            return "night"
-
-    def _calculate_travel_info(self,
-                               from_location: PlaceDetail,
-                               to_location: PlaceDetail,
-                               departure_time: datetime = None) -> Dict:
-        """計算交通資訊
-
-        輸入:
-            from_location: 起點
-            to_location: 終點
-            departure_time: 出發時間
-
-        回傳:
-            Dict: {
-                'time': float,              # 交通時間(分鐘)
-                'transport_details': str,    # 交通方式說明
-                'distance_km': float,       # 距離(公里)
-                'route_info': Dict          # Google Maps 路線資訊
-            }
-        """
-        # 先使用直線距離估算
-        distance = from_location.calculate_distance(to_location)
-
-        # 如果距離太遠，直接回傳估算結果，不呼叫 API
-        if distance > self.distance_threshold:
-            speed = self._get_estimated_speed()
-            est_time = (distance / speed) * 60
-            return {
-                'time': round(est_time),
-                'distance_km': distance,
-                'transport_details': self._get_transport_display(),
-                'route_info': None
-            }
-
-        # 距離在合理範圍內才使用 Google Maps API
-        if self.maps_service:
-            try:
-                now = datetime.now()
-                query_time = max(now + timedelta(minutes=1),
-                                 departure_time if departure_time else now)
-
-                origin = (float(from_location.lat), float(from_location.lon))
-                destination = (float(to_location.lat), float(to_location.lon))
-
-                route = self.maps_service.calculate_travel_time(
-                    origin=origin,
-                    destination=destination,
-                    mode=self.travel_mode,
-                    departure_time=query_time
-                )
-
-                if route:  # 確保有得到結果
-                    return {
-                        'time': route['duration_minutes'],
-                        'distance_km': route['distance_meters'] / 1000,
-                        'transport_details': self._get_transport_display(),
-                        'route_info': route
-                    }
-            except Exception as e:
-                print(f"警告：Google Maps 路線查詢失敗: {str(e)}")
-
-        # 如果 API 失敗或沒有 maps_service，使用估算
-        speed = self._get_estimated_speed()
-        est_time = (distance / speed) * 60
-
-        return {
-            'time': round(est_time),
-            'distance_km': distance,
-            'transport_details': self._get_transport_display(),
-            'route_info': None
-        }
 
     def _get_transport_display(self) -> str:
         """取得交通方式的顯示文字"""

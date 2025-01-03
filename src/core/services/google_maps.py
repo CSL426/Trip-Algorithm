@@ -25,7 +25,6 @@ class GoogleMapsService:
         """
         self.client = googlemaps.Client(key=api_key)
 
-    @cached(maxsize=128)
     def calculate_travel_time(self,
                               origin: Tuple[float, float],
                               destination: Tuple[float, float],

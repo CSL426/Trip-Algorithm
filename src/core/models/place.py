@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
 from src.core.services.time_service import TimeService
+from src.core.utils.validator import TripValidator
 
 
 class PlaceDetail(BaseModel):
@@ -78,18 +79,7 @@ class PlaceDetail(BaseModel):
 
     @field_validator('period')
     def validate_period(cls, v: str) -> str:
-        """驗證時段標記的正確性
-
-        輸入參數:
-            v: 時段標記
-
-        回傳:
-            str: 驗證通過的時段標記
-
-        異常:
-            ValueError: 當時段標記不正確時
-        """
-        """驗證時段標記"""
+        """驗證時段標記的正確性"""
         valid_periods = {'morning', 'lunch', 'afternoon', 'dinner', 'night'}
         if v not in valid_periods:
             raise ValueError(f'無效的時段標記: {v}')
@@ -97,30 +87,9 @@ class PlaceDetail(BaseModel):
 
     @field_validator('hours')
     def validate_hours(cls, v: Dict) -> Dict:
-        """驗證營業時間格式
-
-        輸入:
-            v: Dict[int, List[Optional[Dict[str, str]]]] 格式如下:
-            {
-                1: [{'start': '09:00', 'end': '17:00'}],  # 週一
-                2: [{'start': '09:00', 'end': '17:00'}],  # 週二
-                ...
-                7: [{'start': '09:00', 'end': '17:00'}]   # 週日
-            }
-            - 支援多時段營業(例如中午和晚上)
-            - None 表示該日店休
-            - 支援跨日營業時間(例如夜市)
-
-        回傳:
-            Dict: 驗證後的營業時間字典
-
-        異常:
-            ValueError: 當格式錯誤時
-        """
-        from src.core.utils.validator import TripValidator
-
-        # 使用 ValidatorCore 進行驗證
+        """驗證營業時間格式"""
         try:
+            # 使用新的驗證器
             TripValidator.validate_business_hours(v)
             return v
         except ValueError as e:
@@ -128,9 +97,12 @@ class PlaceDetail(BaseModel):
 
     @field_validator('lat', 'lon')
     def validate_coordinates(cls, v: float, field: str) -> float:
-        from src.core.services.geo_service import GeoService
-        if not GeoService.validate_coordinates(v if field == 'lat' else 0,
-                                               0 if field == 'lat' else v):
+        """驗證座標範圍"""
+        # 使用新的驗證器
+        if not TripValidator.validate_coordinates(
+            v if field == 'lat' else 0,
+            0 if field == 'lat' else v
+        ):
             raise ValueError(f"{field} 座標錯誤: 超出有效範圍")
         return v
 

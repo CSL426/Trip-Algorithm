@@ -4,25 +4,18 @@ import time
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from src.core.planner.base import TripPlanner
-from src.core.planner.validator import InputValidator
+from src.core.utils.validator import TripValidator  # 更新引用
 from src.core.utils.navigation_translator import NavigationTranslator
 from sample_data import DEFAULT_LOCATIONS, DEFAULT_REQUIREMENT
 
 
 class TripPlanningSystem:
-    """行程規劃系統
-
-    負責：
-    1. 整合各個元件
-    2. 處理使用者輸入
-    3. 格式化輸出
-    4. 系統流程控制
-    """
+    """行程規劃系統"""
 
     def __init__(self):
         """初始化規劃系統"""
         self.planner = TripPlanner()
-        self.validator = InputValidator()
+        self.validator = TripValidator()  # 使用新的驗證器
         self.execution_time = 0
 
     def plan_trip(self, locations: List[Dict], requirement: Dict) -> List[Dict]:
@@ -64,12 +57,7 @@ class TripPlanningSystem:
             raise
 
     def print_itinerary(self, itinerary: List[Dict], show_navigation: bool = False) -> None:
-        """列印行程結果
-
-        輸入:
-            itinerary: 行程列表
-            show_navigation: 是否顯示導航說明
-        """
+        """列印行程結果"""
         print("\n=== 行程規劃結果 ===")
 
         total_travel_time = 0
@@ -98,20 +86,6 @@ class TripPlanningSystem:
             f"總交通時間: {total_travel_time:.0f}分鐘 ({total_travel_time/60:.1f}小時)")
         print(f"規劃耗時: {self.execution_time:.2f}秒")
 
-    def _get_start_location(self, requirement: Dict) -> Optional[Dict]:
-        """處理起點設定"""
-        start_point = requirement.get('start_point')
-        if not start_point or start_point == "台北車站":
-            return None
-        return self._get_location_info(start_point)
-
-    def _get_end_location(self, requirement: Dict) -> Optional[Dict]:
-        """處理終點設定"""
-        end_point = requirement.get('end_point')
-        if not end_point:
-            return None
-        return self._get_location_info(end_point)
-
     def _get_location_info(self, place_name: str) -> Dict:
         """取得地點資訊"""
         try:
@@ -132,6 +106,20 @@ class TripPlanningSystem:
         except Exception as e:
             raise ValueError(f"無法取得地點資訊: {str(e)}")
 
+    def _get_start_location(self, requirement: Dict) -> Optional[Dict]:
+        """處理起點設定"""
+        start_point = requirement.get('start_point')
+        if not start_point or start_point == "台北車站":
+            return None
+        return self._get_location_info(start_point)
+
+    def _get_end_location(self, requirement: Dict) -> Optional[Dict]:
+        """處理終點設定"""
+        end_point = requirement.get('end_point')
+        if not end_point or end_point == "none":
+            return None
+        return self._get_location_info(end_point)
+
 
 def main():
     """主程式進入點"""
@@ -139,7 +127,7 @@ def main():
         system = TripPlanningSystem()
 
         # 處理預設值
-        processed_requirement = system.validator.set_default_requirement(
+        processed_requirement = TripValidator.set_default_requirement(
             DEFAULT_REQUIREMENT)
 
         # 顯示規劃參數

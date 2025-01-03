@@ -1,6 +1,6 @@
 # src/core/services/time_service.py
 
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from typing import Dict, List, Union, Tuple, Optional
 
 
@@ -12,6 +12,9 @@ class TimeService:
     2. 營業時間判斷
     3. 時段管理與計算
     """
+
+    # 增加時間格式常數
+    TIME_FORMAT = '%H:%M'
 
     def __init__(self, lunch_time: Optional[str] = None, dinner_time: Optional[str] = None):
         """初始化時間服務
@@ -44,7 +47,7 @@ class TimeService:
             return time_input
 
         try:
-            time_obj = datetime.strptime(time_input, '%H:%M').time()
+            time_obj = datetime.strptime(time_input, self.TIME_FORMAT).time()
             return datetime.combine(datetime.now().date(), time_obj)
         except ValueError:
             raise ValueError(f"時間格式錯誤: {time_input}, 需為 HH:MM 格式")
@@ -199,3 +202,45 @@ class TimeService:
                 return True, remaining_minutes
 
         return False, None
+
+    @classmethod
+    def parse_time_range(cls, start_time: str, end_time: str) -> Tuple[time, time]:
+        """解析時間範圍字串
+
+        輸入:
+            start_time: 開始時間 (HH:MM格式)
+            end_time: 結束時間 (HH:MM格式)
+
+        回傳:
+            Tuple[time, time]: (開始時間, 結束時間)
+
+        異常:
+            ValueError: 時間格式錯誤
+        """
+        try:
+            start = datetime.strptime(start_time, cls.TIME_FORMAT).time()
+            end = datetime.strptime(end_time, cls.TIME_FORMAT).time()
+            return start, end
+        except ValueError as e:
+            raise ValueError(f"時間格式錯誤: {e}")
+
+    @classmethod
+    def is_time_in_range(cls, check_time: time, start: time, end: time,
+                         allow_overnight: bool = False) -> bool:
+        """檢查時間是否在指定範圍內
+
+        輸入:
+            check_time: 要檢查的時間
+            start: 開始時間
+            end: 結束時間
+            allow_overnight: 是否允許跨日(例如夜市營業時間)
+
+        回傳:
+            bool: True表示在範圍內
+        """
+        if allow_overnight and end < start:
+            # 跨日情況 (例如 22:00-03:00)
+            return check_time >= start or check_time <= end
+        else:
+            # 一般情況
+            return start <= check_time <= end

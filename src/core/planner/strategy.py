@@ -7,6 +7,7 @@ from src.core.evaluator.place_scoring import PlaceScoring
 from src.core.models.place import PlaceDetail
 from src.core.services.time_service import TimeService
 from src.core.services.google_maps import GoogleMapsService
+from src.core.utils.cache_decorator import cached
 
 
 class PlanningStrategy:
@@ -141,9 +142,12 @@ class PlanningStrategy:
         for location in available_locations:
             # 計算交通資訊
             travel_info = self._calculate_travel_info(
-                current_loc,
-                location,
-                visit_time
+                from_lat=current_loc.lat,
+                from_lon=current_loc.lon,
+                to_lat=location.lat,
+                to_lon=location.lon,
+                mode=self.travel_mode,
+                departure_time=visit_time
             )
 
             # 計算評分
@@ -185,52 +189,63 @@ class PlanningStrategy:
             'walking': 5    # 步行 5 km/h
         }.get(self.travel_mode, 30)
 
-    def _calculate_travel_info(self,
-                               from_location: PlaceDetail,
-                               to_location: PlaceDetail,
-                               departure_time: datetime = None) -> Dict:
-        """計算交通資訊
 
-        輸入:
-            from_location: 起點
-            to_location: 終點
-            departure_time: 出發時間
+@cached(maxsize=128)
+def _calculate_travel_info(self,
+                           from_lat: float,
+                           from_lon: float,
+                           to_lat: float,
+                           to_lon: float,
+                           mode: str,
+                           departure_time: datetime = None) -> Dict:
+    """計算交通資訊
 
-        回傳:
-            Dict: {
-                'time': float,              # 交通時間(分鐘)
-                'transport_details': str,    # 交通方式說明
-                'distance_km': float,        # 距離(公里)
-                'route_info': Dict          # Google Maps 路線資訊
+    輸入:
+        from_lat: 起點緯度
+        from_lon: 起點經度
+        to_lat: 終點緯度
+        to_lon: 終點經度
+        mode: 交通方式
+        departure_time: 出發時間
+
+    回傳:
+        Dict: 交通資訊
+    """
+    try:
+        if self.maps_service:
+            # 確保出發時間是未來時間
+            current_time = datetime.now()
+            if departure_time is None or departure_time < current_time:
+                departure_time = current_time + timedelta(minutes=1)
+
+            route = self.maps_service.calculate_travel_time(
+                origin=(from_lat, from_lon),
+                destination=(to_lat, to_lon),
+                mode=mode,
+                departure_time=departure_time
+            )
+
+            return {
+                'time': route['duration_minutes'],
+                'distance_km': route['distance_meters'] / 1000,
+                'transport_details': self._get_transport_display(),
+                'route_info': route
             }
-        """
-        try:
-            # 使用 Google Maps API
-            if self.maps_service:
-                route = self.maps_service.calculate_travel_time(
-                    origin=(from_location.lat, from_location.lon),
-                    destination=(to_location.lat, to_location.lon),
-                    mode=self.travel_mode,
-                    departure_time=departure_time or datetime.now()
-                )
+    except Exception as e:
+        print(f"警告：Google Maps 路線查詢失敗: {str(e)}")
 
-                return {
-                    'time': route['duration_minutes'],
-                    'distance_km': route['distance_meters'] / 1000,
-                    'transport_details': self._get_transport_display(),
-                    'route_info': route
-                }
-        except Exception as e:
-            print(f"警告：Google Maps 路線查詢失敗: {str(e)}")
+    # 使用直線距離估算
+    from src.core.services.geo_service import GeoService
+    distance = GeoService.calculate_distance(
+        {'lat': from_lat, 'lon': from_lon},
+        {'lat': to_lat, 'lon': to_lon}
+    )
+    speed = self._get_estimated_speed()
+    est_time = (distance / speed) * 60
 
-        # 使用直線距離估算
-        distance = from_location.calculate_distance(to_location)
-        speed = self._get_estimated_speed()
-        est_time = (distance / speed) * 60
-
-        return {
-            'time': round(est_time),
-            'distance_km': distance,
-            'transport_details': self._get_transport_display(),
-            'route_info': None
-        }
+    return {
+        'time': round(est_time),
+        'distance_km': distance,
+        'transport_details': self._get_transport_display(),
+        'route_info': None
+    }

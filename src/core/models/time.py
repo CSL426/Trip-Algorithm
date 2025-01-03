@@ -3,14 +3,14 @@
 from datetime import datetime, time, timedelta
 from typing import Tuple
 from pydantic import BaseModel, field_validator
-from src.core.utils.time_core import TimeCore
+from src.core.utils.validator import TripValidator  # 更新引用
 
 
 class TimeSlot(BaseModel):
     """時間區間的資料模型
 
     用於表示營業時間、活動時段等時間範圍
-    整合 TimeCore 的基礎功能
+    整合 TripValidator 的基礎功能
 
     屬性：
         start_time (str): 開始時間，格式必須為 "HH:MM"
@@ -24,9 +24,9 @@ class TimeSlot(BaseModel):
     @classmethod
     def validate_time_format(cls, v: str) -> str:
         """驗證時間格式
-        使用 TimeCore 的驗證功能
+        使用 TripValidator 的驗證功能
         """
-        if not TimeCore.validate_time_str(v):
+        if not TripValidator.validate_time_string(v):
             raise ValueError(f'時間格式錯誤: {v}，必須為 HH:MM 格式')
         return v
 
@@ -35,8 +35,7 @@ class TimeSlot(BaseModel):
     def validate_time_order(cls, v: str, info) -> str:
         """確保結束時間在開始時間之後"""
         if 'start_time' in info.data:
-            start, end = TimeCore.parse_time_range(info.data['start_time'], v)
-            if end <= start:
+            if not TripValidator.validate_time_range(info.data['start_time'], v):
                 raise ValueError('結束時間必須晚於開始時間')
         return v
 
@@ -49,5 +48,4 @@ class TimeSlot(BaseModel):
         回傳：
             bool: True 表示在區間內，False 表示在區間外
         """
-        start, end = TimeCore.parse_time_range(self.start_time, self.end_time)
-        return TimeCore.is_time_in_range(check_time.time(), start, end)
+        return TripValidator.validate_time_string(check_time.strftime('%H:%M'))

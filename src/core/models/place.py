@@ -2,9 +2,9 @@
 
 from typing import List, Dict, Optional, Union
 from pydantic import BaseModel, Field, field_validator
-from datetime import datetime, time
-from src.core.utils.geo_core import GeoCore
-from src.core.utils.time_core import TimeCore
+from datetime import datetime
+
+from src.core.services.time_service import TimeService
 
 
 class PlaceDetail(BaseModel):
@@ -100,148 +100,61 @@ class PlaceDetail(BaseModel):
         """驗證營業時間格式
 
         輸入:
-            v (Dict): {
-                1-7: [{'start': 'HH:MM', 'end': 'HH:MM'}, ...] 
+            v: Dict[int, List[Optional[Dict[str, str]]]] 格式如下:
+            {
+                1: [{'start': '09:00', 'end': '17:00'}],  # 週一
+                2: [{'start': '09:00', 'end': '17:00'}],  # 週二
+                ...
+                7: [{'start': '09:00', 'end': '17:00'}]   # 週日
             }
+            - 支援多時段營業(例如中午和晚上)
+            - None 表示該日店休
+            - 支援跨日營業時間(例如夜市)
+
+        回傳:
+            Dict: 驗證後的營業時間字典
 
         異常:
-            ValueError: 時間格式錯誤
+            ValueError: 當格式錯誤時
         """
-        for day, time_slots in v.items():
-            if not isinstance(day, int) or not 1 <= day <= 7:
-                raise ValueError(f"日期必須是1-7：{day}")
+        from src.core.utils.validator import TripValidator
 
-            if not isinstance(time_slots, list):
-                raise ValueError(f"時段必須是列表：{time_slots}")
-
-            for slot in time_slots:
-                if slot is None:
-                    continue
-
-                if not isinstance(slot, dict):
-                    raise ValueError(f"時段格式錯誤：{slot}")
-
-                for key in ['start', 'end']:
-                    if key not in slot:
-                        raise ValueError(f"缺少{key}時間")
-                    if not TimeCore.validate_time_str(slot[key]):
-                        raise ValueError(f"時間格式錯誤：{slot[key]}")
-
-        return v
+        # 使用 ValidatorCore 進行驗證
+        try:
+            TripValidator.validate_business_hours(v)
+            return v
+        except ValueError as e:
+            raise ValueError(f"營業時間格式錯誤: {str(e)}")
 
     @field_validator('lat', 'lon')
     def validate_coordinates(cls, v: float, field: str) -> float:
-        """使用 GeoCore 驗證座標"""
-        try:
-            if field == 'lat':
-                GeoCore.validate_coordinate(v, 0)
-            else:
-                GeoCore.validate_coordinate(0, v)
-            return v
-        except ValueError as e:
-            raise ValueError(f"{field} 座標錯誤: {str(e)}")
-
-    def is_open_at(self, day: int, time_str: str) -> bool:
-        """檢查指定時間是否在營業時間內
-
-        輸入:
-            day: 1-7 代表週一到週日
-            time_str: "HH:MM" 格式時間
-        """
-        if day not in self.hours:
-            return False
-
-        time_slots = self.hours[day]
-        if not time_slots or time_slots[0] is None:
-            return False
-
-        check_time = datetime.strptime(time_str, TimeCore.TIME_FORMAT).time()
-
-        for slot in time_slots:
-            if slot is None:
-                continue
-
-            start, end = TimeCore.parse_time_range(slot['start'], slot['end'])
-            if TimeCore.is_time_in_range(check_time, start, end, allow_overnight=True):
-                return True
-
-        return False
-
-    def get_next_available_time(self, current_day: int, current_time: str) -> Optional[Dict]:
-        """取得下一個營業時間
-
-        輸入:
-            current_day: 1-7代表週一到週日
-            current_time: "HH:MM"格式時間
-
-        回傳:
-            Dict: {
-                'day': int,
-                'start': str,
-                'end': str
-            }
-        """
-        current = datetime.strptime(current_time, TimeCore.TIME_FORMAT).time()
-
-        for day_offset in range(7):
-            check_day = ((current_day - 1 + day_offset) % 7) + 1
-            slots = self.hours.get(check_day, [])
-
-            if not slots or slots[0] is None:
-                continue
-
-            for slot in slots:
-                if slot is None:
-                    continue
-
-                start_time = datetime.strptime(slot['start'],
-                                               TimeCore.TIME_FORMAT).time()
-
-                if day_offset == 0 and start_time <= current:
-                    continue
-
-                return {
-                    'day': check_day,
-                    'start': slot['start'],
-                    'end': slot['end']
-                }
-
-        return None
-
-    def is_suitable_for_current_time(self, current_time: datetime) -> bool:
-        """檢查當前時間是否適合遊玩此地點
-
-        輸入:
-            current_time (datetime): 要檢查的時間
-
-        回傳:
-            bool: True 表示適合，False 表示不適合
-        """
-        period_times = {
-            'morning': ('09:00', '11:00'),
-            'lunch': ('11:00', '14:00'),
-            'afternoon': ('14:00', '17:00'),
-            'dinner': ('17:00', '19:00'),
-            'night': ('19:00', '23:59')
-        }
-
-        if self.period not in period_times:
-            return False
-
-        start_str, end_str = period_times[self.period]
-        start, end = TimeCore.parse_time_range(start_str, end_str)
-
-        return TimeCore.is_time_in_range(current_time.time(), start, end)
+        from src.core.services.geo_service import GeoService
+        if not GeoService.validate_coordinates(v if field == 'lat' else 0,
+                                               0 if field == 'lat' else v):
+            raise ValueError(f"{field} 座標錯誤: 超出有效範圍")
+        return v
 
     def calculate_distance(self, other: Union['PlaceDetail', Dict]) -> float:
         """計算與另一個地點的距離
 
         輸入:
-            other: 另一個地點，可以是 PlaceDetail 物件或包含 lat/lon 的字典
+            other: 另一個地點
+                - 可以是 PlaceDetail 物件
+                - 或包含 lat/lon 的字典
 
         回傳:
-            float: 距離(公里)
+            float: 兩點間距離(公里)
+
+        使用範例:
+            >>> place1 = PlaceDetail(...)
+            >>> place2 = PlaceDetail(...)
+            >>> distance = place1.calculate_distance(place2)
+            >>> # 或是使用字典
+            >>> point = {'lat': 25.0, 'lon': 121.5}
+            >>> distance = place1.calculate_distance(point)
         """
+        from src.core.services.geo_service import GeoService
+
         # 將自己的座標轉換為字典格式
         self_dict = {
             'lat': float(self.lat),  # 確保是浮點數
@@ -261,4 +174,103 @@ class PlaceDetail(BaseModel):
                 'lon': float(other.lon)
             }
 
-        return GeoCore.calculate_distance(self_dict, other_dict)
+        return GeoService.calculate_distance(self_dict, other_dict)
+
+    def is_open_at(self, day: int, time_str: str) -> bool:
+        """檢查指定時間是否在營業時間內
+
+        輸入:
+            day: 1-7 代表週一到週日
+            time_str: "HH:MM" 格式時間
+        """
+        if day not in self.hours:
+            return False
+
+        time_slots = self.hours[day]
+        if not time_slots or time_slots[0] is None:
+            return False
+
+        check_time = datetime.strptime(
+            time_str, TimeService.TIME_FORMAT).time()
+
+        for slot in time_slots:
+            if slot is None:
+                continue
+
+            start, end = TimeService.parse_time_range(
+                slot['start'], slot['end'])
+            if TimeService.is_time_in_range(check_time, start, end, allow_overnight=True):
+                return True
+
+        return False
+
+    def is_suitable_for_current_time(self, current_time: datetime) -> bool:
+        """檢查當前時間是否適合遊玩此地點
+
+        根據用餐時間劃分時段：
+        - 午餐時間前是早上的行程
+        - 午餐時間前後一小時是午餐行程
+        - 午餐後是下午行程
+        - 晚餐時間前後一小時是晚餐行程
+        - 晚餐後是晚上行程
+
+        輸入:
+            current_time (datetime): 要檢查的時間
+
+        回傳:
+            bool: True 表示適合，False 表示不適合
+        """
+        from src.core.services.time_service import TimeService
+
+        time_service = TimeService(
+            lunch_time="12:00",   # 預設午餐時間
+            dinner_time="18:00"   # 預設晚餐時間
+        )
+
+        # 取得當前的時段
+        current_period = time_service.get_current_period(current_time)
+
+        # 檢查當前時段是否符合景點的建議遊玩時段
+        return current_period == self.period
+
+    def get_next_available_time(self, current_day: int, current_time: str) -> Optional[Dict]:
+        """取得下一個營業時間
+
+        輸入:
+            current_day: 1-7代表週一到週日
+            current_time: "HH:MM"格式時間
+
+        回傳:
+            Dict: {
+                'day': int,
+                'start': str,
+                'end': str
+            }
+        """
+        current = datetime.strptime(
+            current_time, TimeService.TIME_FORMAT).time()
+
+        for day_offset in range(7):
+            check_day = ((current_day - 1 + day_offset) % 7) + 1
+            slots = self.hours.get(check_day, [])
+
+            if not slots or slots[0] is None:
+                continue
+
+            for slot in slots:
+                if slot is None:
+                    continue
+
+                start_time = datetime.strptime(slot['start'],
+                                               TimeService.TIME_FORMAT).time()
+
+                if day_offset == 0 and start_time <= current:
+                    continue
+
+                return {
+                    'day': check_day,
+                    'start': slot['start'],
+                    'end': slot['end']
+                }
+
+        return None

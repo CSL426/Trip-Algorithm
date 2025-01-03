@@ -57,10 +57,9 @@ class PlanningStrategy:
                 current_location: PlaceDetail,
                 available_locations: List[PlaceDetail],
                 current_time: datetime) -> List[Dict[str, Any]]:
-        """
-        執行行程規劃
+        """執行行程規劃
 
-        參數：
+        輸入：
             current_location: 當前位置
             available_locations: 可選擇的地點列表
             current_time: 當前時間
@@ -126,10 +125,9 @@ class PlanningStrategy:
                                  current_loc: PlaceDetail,
                                  available_locations: List[PlaceDetail],
                                  visit_time: datetime) -> Optional[Tuple[PlaceDetail, Dict]]:
-        """
-        尋找最佳的下一個地點
+        """尋找最佳的下一個地點
 
-        參數：
+        輸入：
             current_loc: 當前位置
             available_locations: 可選擇的地點列表
             visit_time: 當前時間
@@ -169,6 +167,24 @@ class PlanningStrategy:
 
         return selected[0], selected[2]
 
+    def _get_transport_display(self) -> str:
+        """取得交通方式的顯示文字"""
+        return {
+            'transit': '大眾運輸',
+            'driving': '開車',
+            'walking': '步行',
+            'bicycling': '騎車'
+        }.get(self.travel_mode, self.travel_mode)
+
+    def _get_estimated_speed(self) -> float:
+        """取得預估的移動速度(公里/小時)"""
+        return {
+            'transit': 30,  # 大眾運輸 30 km/h
+            'driving': 40,  # 開車 40 km/h
+            'bicycling': 15,  # 騎車 15 km/h
+            'walking': 5    # 步行 5 km/h
+        }.get(self.travel_mode, 30)
+
     def _calculate_travel_info(self,
                                from_location: PlaceDetail,
                                to_location: PlaceDetail,
@@ -184,7 +200,7 @@ class PlanningStrategy:
             Dict: {
                 'time': float,              # 交通時間(分鐘)
                 'transport_details': str,    # 交通方式說明
-                'distance_km': float,       # 距離(公里)
+                'distance_km': float,        # 距離(公里)
                 'route_info': Dict          # Google Maps 路線資訊
             }
         """
@@ -218,39 +234,3 @@ class PlanningStrategy:
             'transport_details': self._get_transport_display(),
             'route_info': None
         }
-
-    def _get_transport_display(self) -> str:
-        """取得交通方式的顯示文字"""
-        return {
-            'transit': '大眾運輸',
-            'driving': '開車',
-            'walking': '步行',
-            'bicycling': '騎車'
-        }.get(self.travel_mode, self.travel_mode)
-
-    def _get_estimated_speed(self) -> float:
-        """取得預估的移動速度(公里/小時)"""
-        return {
-            'transit': 30,  # 大眾運輸 30 km/h
-            'driving': 40,  # 開車 40 km/h
-            'bicycling': 15,  # 騎車 15 km/h
-            'walking': 5    # 步行 5 km/h
-        }.get(self.travel_mode, 30)
-
-    def _get_transport_display(self) -> str:
-        """取得交通方式的顯示文字"""
-        return {
-            'transit': '大眾運輸',
-            'driving': '開車',
-            'walking': '步行',
-            'bicycling': '騎車'
-        }.get(self.travel_mode, self.travel_mode)
-
-    def _get_estimated_speed(self) -> float:
-        """取得預估的移動速度(公里/小時)"""
-        return {
-            'transit': 30,  # 大眾運輸 30 km/h
-            'driving': 40,  # 開車 40 km/h
-            'bicycling': 15,  # 騎車 15 km/h
-            'walking': 5    # 步行 5 km/h
-        }.get(self.travel_mode, 30)

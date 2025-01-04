@@ -4,8 +4,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Union
 from src.core.models.place import PlaceDetail
 from src.core.models.trip import Transport, TripPlan
-from src.core.utils.validator import TripValidator, ValidationError  # 更新引用
-from src.core.planner.strategy import PlanningStrategy
+from src.core.utils.validator import TripValidator
 
 
 class TripPlanner:
@@ -76,7 +75,7 @@ class TripPlanner:
             else:
                 self.end_location = self.start_location.model_copy()
 
-        except ValidationError as e:
+        except TripValidator as e:
             raise ValueError(f"地點資料驗證失敗: {str(e)}")
 
     def plan(self,
@@ -87,7 +86,12 @@ class TripPlanner:
              requirement: dict = None) -> List[Dict[str, Any]]:
         """執行行程規劃
 
-        輸入:
+        這個方法使用策略模式來處理行程規劃。它會：
+        1. 建立規劃的上下文（包含所有必要的參數和狀態）
+        2. 使用策略工廠創建合適的策略
+        3. 通過策略管理器來執行和監控規劃過程
+
+        參數:
             start_time: 開始時間 (HH:MM格式)
             end_time: 結束時間 (HH:MM格式)
             travel_mode: 交通方式
@@ -96,11 +100,7 @@ class TripPlanner:
 
         回傳:
             List[Dict]: 規劃後的行程列表
-
-        異常:
-            ValueError: 當驗證失敗或參數不合法時
         """
-        # 驗證行程需求
         requirement = requirement or {}
         try:
             self.validator.validate_trip_requirement({
@@ -110,46 +110,58 @@ class TripPlanner:
                 'distance_threshold': distance_threshold,
                 **requirement
             })
-        except ValidationError as e:
+
+            self.travel_mode = travel_mode
+
+            # 初始化時間
+            today = datetime.now().date()
+            self.start_datetime = datetime.combine(
+                today, datetime.strptime(start_time, '%H:%M').time())
+            self.end_datetime = datetime.combine(
+                today, datetime.strptime(end_time, '%H:%M').time())
+
+            # 驗證基本設定
+            if not self._validate_time_range():
+                raise ValueError("結束時間必須晚於開始時間")
+            if not self.available_locations:
+                raise ValueError("沒有可用的地點")
+
+            # 建立策略工廠和管理器
+            from src.core.planner.strategy import PlanningStrategyFactory, StrategyManager
+
+            # 創建策略工廠
+            strategy_factory = PlanningStrategyFactory(
+                time_service=self.time_service,
+                geo_service=self.geo_service,
+                place_scoring=self.place_scoring
+            )
+
+            # 創建策略管理器
+            strategy_manager = StrategyManager(strategy_factory)
+
+            # 準備規劃上下文
+            context = {
+                'start_time': self.start_datetime,
+                'end_time': self.end_datetime,
+                'travel_mode': travel_mode,
+                'distance_threshold': distance_threshold,
+                'start_location': self.start_location,
+                'available_places': self.available_locations,
+                **requirement
+            }
+
+            # 初始化並執行策略
+            strategy = strategy_manager.initialize_strategy(context)
+            itinerary = strategy.execute(
+                current_location=self.start_location,
+                available_places=self.available_locations,
+                current_time=self.start_datetime
+            )
+
+            return itinerary
+
+        except TripValidator as e:
             raise ValueError(f"行程需求驗證失敗: {str(e)}")
-
-        # 儲存交通方式
-        self.travel_mode = travel_mode
-
-        # 初始化時間
-        today = datetime.now().date()
-        self.start_datetime = datetime.combine(
-            today, datetime.strptime(start_time, '%H:%M').time())
-        self.end_datetime = datetime.combine(
-            today, datetime.strptime(end_time, '%H:%M').time())
-
-        # 驗證基本設定
-        if not self._validate_time_range():
-            raise ValueError("結束時間必須晚於開始時間")
-        if not self.available_locations:
-            raise ValueError("沒有可用的地點")
-
-        # 初始化規劃策略
-        strategy = PlanningStrategy(
-            start_time=self.start_datetime,
-            end_time=self.end_datetime,
-            travel_mode=travel_mode,
-            distance_threshold=distance_threshold,
-            requirement=requirement
-        )
-
-        # 執行規劃
-        itinerary = strategy.execute(
-            current_location=self.start_location,
-            available_locations=self.available_locations,
-            current_time=self.start_datetime
-        )
-
-        # 更新統計資訊
-        if itinerary:
-            self._update_statistics(itinerary)
-
-        return itinerary
 
     def _validate_time_range(self) -> bool:
         """驗證時間範圍的合理性"""

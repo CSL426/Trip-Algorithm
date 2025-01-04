@@ -144,6 +144,38 @@ class PlaceScoring:
         score = min(1.0, efficiency_ratio / expected_ratio)
         return max(0.0, score)
 
+    def _calculate_distance_score(self, place: PlaceDetail, current_location: PlaceDetail) -> float:
+        """計算距離合理性分數
+
+        這個方法評估地點與當前位置的距離是否合理。它會：
+        - 為不同類型的地點設定不同的距離標準
+        - 主要景點可以接受較遠的距離
+        - 餐飲地點要求較近距離
+
+        參數:
+            place: 要評分的地點
+            current_location: 當前位置
+
+        回傳:
+            float: 0-1 之間的距離分數，越近分數越高
+        """
+        # 計算實際距離
+        distance = self.geo_service.calculate_distance(
+            {'lat': current_location.lat, 'lon': current_location.lon},
+            {'lat': place.lat, 'lon': place.lon}
+        )
+
+        # 根據地點類型調整可接受距離
+        max_distance = 30.0  # 預設最大可接受距離（公里）
+        if place.label in ['景點', '主要景點']:
+            max_distance *= 1.2  # 景點可以接受較遠的距離
+        elif place.label in ['餐廳', '小吃']:
+            max_distance *= 0.8  # 餐飲地點要求較近
+
+        # 計算距離分數（線性遞減）
+        score = 1.0 - (distance / max_distance)
+        return max(0.0, min(1.0, score))
+
     def _calculate_time_slot_score(self, place: PlaceDetail, current_time: datetime) -> float:
         """計算時段適合度分數
 
@@ -178,3 +210,115 @@ class PlaceScoring:
         hours_score = self._evaluate_business_hours_fit(place, current_time)
 
         return min(1.0, base_score * hours_score)
+
+    def _check_business_hours(self, place: PlaceDetail, current_time: datetime) -> bool:
+        """檢查地點是否在營業時間內
+
+        使用地點的營業時間資訊來判斷當前是否營業。
+
+        參數：
+            place: 要檢查的地點
+            current_time: 要檢查的時間
+
+        回傳：
+            bool: True 表示營業中，False 表示不營業
+        """
+        weekday = current_time.isoweekday()  # 1-7 代表週一到週日
+        time_str = current_time.strftime(self.time_service.TIME_FORMAT)
+
+        # 使用地點的 is_open_at 方法檢查營業狀態
+        return place.is_open_at(weekday, time_str)
+
+    def _evaluate_business_hours_fit(self, place: PlaceDetail, current_time: datetime) -> float:
+        """評估營業時間的適合度
+
+        不僅檢查地點是否營業，還評估：
+        - 距離打烊時間還有多久（避免太接近打烊時間）
+        - 是否有足夠的遊玩時間
+        - 當前是否處於營業的黃金時段
+
+        參數:
+            place: 要評分的地點
+            current_time: 當前時間
+
+        回傳:
+            float: 0-1 之間的適合度分數
+        """
+        weekday = current_time.isoweekday()
+        time_str = current_time.strftime(self.time_service.TIME_FORMAT)
+
+        # 先檢查是否營業
+        is_open = place.is_open_at(weekday, time_str)
+        if not is_open:
+            return 0.0
+
+        # 檢查剩餘營業時間
+        slots = place.hours.get(weekday, [])
+        best_score = 0.0  # 取多個時段中的最佳分數
+
+        for slot in slots:
+            if slot is None:
+                continue
+
+            current_slot_score = self._calculate_slot_score(
+                current_time,
+                slot,
+                place.duration_min
+            )
+            best_score = max(best_score, current_slot_score)
+
+        return best_score
+
+    def _calculate_slot_score(self,
+                              current_time: datetime,
+                              slot: Dict[str, str],
+                              duration_min: int) -> float:
+        """計算單一時段的適合度分數
+
+        參數:
+            current_time: 當前時間
+            slot: 營業時段資訊
+            duration_min: 預計停留時間
+
+        回傳:
+            float: 0-1 之間的分數
+        """
+        # 解析結束時間
+        closing_time = datetime.strptime(slot['end'],
+                                         self.time_service.TIME_FORMAT).time()
+        current_minutes = current_time.hour * 60 + current_time.minute
+        closing_minutes = closing_time.hour * 60 + closing_time.minute
+
+        # 如果是跨日營業，調整結束時間
+        if closing_time < datetime.strptime(slot['start'],
+                                            self.time_service.TIME_FORMAT).time():
+            closing_minutes += 24 * 60
+
+        # 計算剩餘時間
+        remaining_minutes = closing_minutes - current_minutes
+        if remaining_minutes < 0:
+            remaining_minutes += 24 * 60
+
+        # 根據剩餘時間評分
+        if remaining_minutes < duration_min:
+            return 0.0  # 剩餘時間不足
+        elif remaining_minutes < duration_min * 1.5:
+            return 0.5  # 時間稍嫌緊湊
+        else:
+            return 1.0  # 有充足時間
+
+    def _normalize_score(self, score: float) -> float:
+        """標準化評分到合理範圍
+
+        確保最終評分落在有效範圍內（0-1），同時：
+        - 避免極端值
+        - 保持評分的相對關係
+        - 讓分數分布更合理
+
+        參數:
+            score: 原始評分
+
+        回傳:
+            float: 標準化後的評分（0-1之間）
+        """
+        return max(self.min_score, min(self.max_score, score))

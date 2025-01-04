@@ -64,6 +64,34 @@ class TimeService:
         except ValueError:
             return None
 
+    @classmethod
+    def parse_time_range(cls, start_time: str, end_time: str) -> Tuple[time, time]:
+        """解析時間範圍字串
+
+        使用 _parse_time 來解析開始和結束時間。
+
+        參數:
+            start_time: 開始時間 (HH:MM格式)
+            end_time: 結束時間 (HH:MM格式)
+
+        回傳:
+            Tuple[time, time]: (開始時間, 結束時間)
+
+        異常:
+            ValueError: 時間格式錯誤
+        """
+        try:
+            # 使用現有的 _parse_time 方法
+            start = cls._parse_time(cls, start_time)
+            end = cls._parse_time(cls, end_time)
+
+            if start is None or end is None:
+                raise ValueError("時間格式無效")
+
+            return start, end
+        except ValueError as e:
+            raise ValueError(f"時間格式錯誤: {e}")
+
     def validate_time_string(self, time_str: str) -> bool:
         """驗證時間字串格式是否正確
 
@@ -294,6 +322,26 @@ class TimeService:
                     return True, None
 
         return False, None
+
+    @classmethod
+    def is_time_in_range(cls, check_time: time, start: time, end: time, allow_overnight: bool = False) -> bool:
+        """檢查時間是否在指定範圍內
+
+        參數:
+            check_time: 要檢查的時間
+            start: 開始時間
+            end: 結束時間
+            allow_overnight: 是否允許跨日(例如夜市營業時間)
+
+        回傳:
+            bool: True表示在範圍內
+        """
+        if allow_overnight and end < start:
+            # 跨日情況 (例如 22:00-03:00)
+            return check_time >= start or check_time <= end
+        else:
+            # 一般情況
+            return start <= check_time <= end
 
     def _calculate_duration(self, start: time, end: time) -> int:
         """計算兩個時間點之間的分鐘數

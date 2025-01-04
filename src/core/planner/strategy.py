@@ -30,18 +30,18 @@ class BasePlanningStrategy(ABC):
                  geo_service: GeoService,
                  place_scoring: PlaceScoring,
                  config: Dict):
-        """初始化策略
+        """初始化規劃策略的基礎類別
 
-        參數:
+        輸入參數:
             time_service: 時間服務，處理所有時間相關的運算
             geo_service: 地理服務，處理所有位置相關的運算
             place_scoring: 評分服務，計算地點的綜合評分
-            config: 策略配置，包含：
-                - start_time: 開始時間
-                - end_time: 結束時間
+            config: 策略配置，必須包含:
+                - start_time: 開始時間 (datetime)
+                - end_time: 結束時間 (datetime)
                 - travel_mode: 交通方式
-                - meal_times: 用餐時間設定
-                - other_preferences: 其他偏好設定
+                - meal_times: 用餐時間設定 (Dict)
+                - other_preferences: 其他偏好設定 (Dict)
         """
         self.time_service = time_service
         self.geo_service = geo_service
@@ -54,10 +54,13 @@ class BasePlanningStrategy(ABC):
         self.meal_times = config.get('meal_times', {})
         self.preferences = config.get('other_preferences', {})
 
-        # 策略內部狀態
+        # 初始化狀態追蹤
         self.visited_places = []
         self.current_time = self.start_time
         self.total_distance = 0.0
+
+        # 新增：初始化行程列表
+        self._itinerary = []
 
     @abstractmethod
     def select_next_place(self,
@@ -110,21 +113,28 @@ class BasePlanningStrategy(ABC):
                 current_time: datetime) -> List[Dict]:
         """執行行程規劃
 
-        這是策略的主要執行方法，會：
-        1. 反覆選擇下一個最佳地點
-        2. 檢查行程可行性
-        3. 更新行程狀態
-        4. 最佳化整體行程
-
-        參數:
-            current_location: 起點位置
-            available_places: 所有可選擇的地點
-            current_time: 開始時間
+        輸入參數:
+            current_location: 起點位置 (PlaceDetail)
+            available_places: 所有可選擇的地點列表 (List[PlaceDetail])
+            current_time: 開始時間 (datetime)
 
         回傳:
-            List[Dict]: 規劃好的行程列表
+            List[Dict]: 規劃好的行程列表，每個項目包含:
+            - name: 地點名稱
+            - step: 順序編號
+            - start_time: 到達時間
+            - end_time: 離開時間
+            - duration: 停留時間(分鐘)
+            - travel_time: 交通時間(分鐘)
+            - travel_distance: 交通距離(公里)
+            - transport_details: 交通方式
+            - route_info: 路線資訊(如果有)
         """
-        itinerary = []
+        # 確保行程列表已初始化
+        if not hasattr(self, '_itinerary'):
+            self._itinerary = []
+        else:
+            self._itinerary.clear()  # 清空舊的行程資料
         remaining_places = available_places.copy()
         current_loc = current_location
         visit_time = current_time
@@ -152,9 +162,10 @@ class BasePlanningStrategy(ABC):
             departure_time = self._calculate_departure_time(
                 arrival_time, place.duration_min)
 
-            # 加入行程
-            itinerary.append(self._create_itinerary_item(
-                place, arrival_time, departure_time, travel_info))
+            # 建立並儲存行程項目
+            itinerary_item = self._create_itinerary_item(
+                place, arrival_time, departure_time, travel_info)
+            self._itinerary.append(itinerary_item)
 
             # 更新狀態
             current_loc = place
@@ -163,7 +174,87 @@ class BasePlanningStrategy(ABC):
             self.visited_places.append(place)
             self.total_distance += travel_info['distance_km']
 
-        return self.optimize_itinerary(itinerary)
+        return self._itinerary
+
+    def _calculate_arrival_time(self,
+                                start_time: datetime,
+                                travel_minutes: float) -> datetime:
+        """計算到達時間
+
+        根據出發時間和交通時間計算預計到達時間。
+
+        參數:
+            start_time: 出發時間
+            travel_minutes: 交通時間（分鐘）
+
+        回傳:
+            datetime: 預計到達時間
+        """
+        return start_time + timedelta(minutes=int(travel_minutes))
+
+    def _calculate_departure_time(self,
+                                  arrival_time: datetime,
+                                  duration_minutes: int) -> datetime:
+        """計算離開時間
+
+        根據到達時間和停留時間計算預計離開時間。
+
+        參數:
+            arrival_time: 到達時間
+            duration_minutes: 停留時間（分鐘）
+
+        回傳:
+            datetime: 預計離開時間
+        """
+        return arrival_time + timedelta(minutes=duration_minutes)
+
+    def _create_itinerary_item(self,
+                               place: PlaceDetail,
+                               arrival_time: datetime,
+                               departure_time: datetime,
+                               travel_info: Dict) -> Dict:
+        """建立行程項目
+
+        組織所有必要的行程資訊為一個字典。
+
+        參數:
+            place: 地點資訊
+            arrival_time: 到達時間
+            departure_time: 離開時間
+            travel_info: 交通資訊
+
+        回傳:
+            Dict: 完整的行程項目資訊
+        """
+        return {
+            'name': place.name,
+            'step': len(self.visited_places) + 1,
+            'start_time': arrival_time.strftime('%H:%M'),
+            'end_time': departure_time.strftime('%H:%M'),
+            'duration': place.duration_min,
+            'travel_time': travel_info['duration_minutes'],
+            'travel_distance': travel_info.get('distance_km', 0),
+            'transport_details': travel_info.get('transport_mode', self.travel_mode),
+            'route_info': travel_info.get('route_info')
+        }
+
+    def _get_itinerary_travel_time(self, index: int) -> float:
+        """從行程中獲取交通時間
+
+        這個方法用來從行程資訊中取得交通時間，避免依賴 PlaceDetail 的屬性
+
+        參數:
+            index: 行程的索引位置
+
+        回傳:
+            float: 該行程項目的交通時間（分鐘）
+        """
+        if not hasattr(self, '_itinerary'):
+            self._itinerary = []
+
+        if 0 <= index < len(self._itinerary):
+            return self._itinerary[index].get('travel_time', 0)
+        return 0
 
 
 class StandardPlanningStrategy(BasePlanningStrategy):
@@ -597,7 +688,12 @@ class CompactPlanningStrategy(BasePlanningStrategy):
         # 計算時間相關數據
         travel_time = travel_info['duration_minutes']
         total_time = sum(p.duration_min for p in self.visited_places)
-        total_travel = sum(p.travel_time for p in self.visited_places)
+
+        # 計算已經使用的交通時間（從行程列表中獲取）
+        total_travel = sum(
+            self._get_itinerary_travel_time(i)
+            for i in range(len(self.visited_places))
+        )
 
         # 檢查交通時間比例
         if (total_travel + travel_time) / (total_time + place.duration_min) > self.max_travel_ratio:

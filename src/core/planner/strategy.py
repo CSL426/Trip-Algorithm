@@ -665,6 +665,73 @@ class CompactPlanningStrategy(BasePlanningStrategy):
 
         return density_score
 
+    def _calculate_efficiency_score(self,
+                                    place: PlaceDetail,
+                                    current_time: datetime,
+                                    travel_info: Dict) -> float:
+        """計算緊湊策略的效率分數"""
+        # 基礎評分
+        base_score = self.place_scoring.calculate_score(
+            place=place,
+            current_location=place,  # 改用 travel_info 中的資訊
+            current_time=current_time,
+            travel_time=travel_info['duration_minutes']
+        )
+
+        if base_score == float('-inf'):
+            return float('-inf')
+
+        # 時間效率（停留時間/交通時間的比例）
+        efficiency_base = 1.5  # 加入這個基準值
+        time_ratio = place.duration_min / \
+            max(travel_info['duration_minutes'], 1)
+        efficiency_factor = min(1.0, time_ratio / efficiency_base)
+
+        # 群聚效應
+        cluster_factor = self._calculate_cluster_factor(place)
+
+        # 綜合評分
+        final_score = (
+            base_score * 0.4 +
+            efficiency_factor * 0.4 +
+            cluster_factor * 0.2
+        )
+
+        return final_score
+
+    def _calculate_cluster_factor(self, place: PlaceDetail) -> float:
+        """計算地點的群聚因子
+
+        評估地點與已訪問地點的群聚程度：
+        1. 計算與已訪問地點的平均距離
+        2. 評估是否形成有效的景點群
+        3. 考慮路線的連貫性
+
+        參數:
+            place: 要評估的地點
+
+        回傳:
+            float: 0-1 之間的群聚分數
+        """
+        if not self.visited_places:
+            return 1.0
+
+        # 計算與最近的已訪問地點的距離
+        distances = []
+        for visited in self.visited_places[-3:]:  # 只考慮最近的3個地點
+            distance = self.geo_service.calculate_distance(
+                {'lat': visited.lat, 'lon': visited.lon},
+                {'lat': place.lat, 'lon': place.lon}
+            )
+            distances.append(distance)
+
+        # 取最小距離
+        min_distance = min(distances)
+
+        # 根據群聚半徑計算分數
+        cluster_score = 1.0 - (min_distance / (self.cluster_radius * 2))
+        return max(0.0, min(1.0, cluster_score))
+
 
 class ThematicPlanningStrategy(BasePlanningStrategy):
     """主題式行程規劃策略

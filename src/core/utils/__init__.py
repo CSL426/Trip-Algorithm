@@ -2,10 +2,11 @@
 
 from .validator import TripValidator
 from .navigation_translator import NavigationTranslator
-from .cache_decorator import cached
+from .cache_decorator import cached, geo_cache
 
 __all__ = [
     'TripValidator',
     'NavigationTranslator',
-    'cached'
+    'cached',
+    'geo_cache'
 ]

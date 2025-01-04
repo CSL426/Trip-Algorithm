@@ -1,10 +1,10 @@
 # src/core/services/geo_service.py
 
-from typing import Dict, List, Tuple, Optional, Union
 from datetime import datetime
+from typing import Dict, List, Tuple, Optional, Union
 import math
 import googlemaps
-from src.core.utils.cache_decorator import cached
+from src.core.utils.cache_decorator import geo_cache
 from src.config.config import GOOGLE_MAPS_API_KEY
 
 
@@ -85,7 +85,7 @@ class GeoService:
 
         return round(self.EARTH_RADIUS * c, 1)
 
-    @cached(maxsize=128)
+    @geo_cache(maxsize=128)
     def get_route(self,
                   origin: Dict[str, float],
                   destination: Dict[str, float],
@@ -371,3 +371,19 @@ class GeoService:
             return {'lat': lat, 'lon': lon}
         except (ValueError, TypeError):
             return None
+
+    @geo_cache(maxsize=128)
+    def get_route(self,
+                  origin: Dict[str, float],
+                  destination: Dict[str, float],
+                  mode: str = 'driving',
+                  departure_time: Optional[datetime] = None) -> Dict:
+        """規劃兩點間的路線"""
+        try:
+            if self.has_google_maps:
+                return self._get_google_maps_route(
+                    origin, destination, mode, departure_time)
+        except Exception as e:
+            print(f"警告：Google Maps 路線規劃失敗，切換到備用方案: {str(e)}")
+
+        return self._get_estimated_route(origin, destination, mode)

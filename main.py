@@ -25,21 +25,18 @@ class TripPlanningSystem:
     def __init__(self):
         """初始化規劃系統
 
-        系統需要初始化三個主要的服務：
-        1. 時間服務(TimeService)：處理所有時間相關的計算和判斷
-        2. 地理服務(GeoService)：處理所有地理位置和距離相關的計算
-        3. 評分服務(PlaceScoring)：根據多個維度計算景點的綜合評分
-
-        這三個服務相互配合，共同支援行程規劃的核心功能。
+        建立並連結各項服務：
+        - 時間服務：處理時段判斷和用餐時間
+        - 地理服務：處理距離和路線計算
+        - 評分服務：計算地點分數
         """
-        # 初始化基礎服務
+        # 初始化時間服務(需要用餐時間設定)
         self.time_service = TimeService(
-            lunch_time="12:00",  # 預設午餐時間
-            dinner_time="18:00"  # 預設晚餐時間
+            lunch_time="12:00",  # 預設中午12點
+            dinner_time="18:00"  # 預設晚上6點
         )
-        self.geo_service = GeoService()
 
-        # 初始化評分服務，需要時間服務和地理服務的支援
+        self.geo_service = GeoService()
         self.place_scoring = PlaceScoring(
             time_service=self.time_service,
             geo_service=self.geo_service
@@ -53,22 +50,51 @@ class TripPlanningSystem:
         )
         self.strategy_manager = StrategyManager(self.strategy_factory)
 
-        # 執行時間追蹤
+        # 執行狀態追蹤
         self.execution_time = 0
+        self.period_statistics = {
+            'morning': {'count': 0, 'time': 0},
+            'lunch': {'count': 0, 'time': 0},
+            'afternoon': {'count': 0, 'time': 0},
+            'dinner': {'count': 0, 'time': 0},
+            'night': {'count': 0, 'time': 0}
+        }
 
     def plan_trip(self, locations: List[Dict], requirement: Dict) -> List[Dict]:
         """執行行程規劃
 
-        在規劃開始前，我們需要將所有的原始資料（字典格式）轉換為系統內部使用的
-        PlaceDetail 物件。這個轉換過程會：
-        1. 驗證資料的完整性
-        2. 設置正確的資料型別
-        3. 確保所有必要的屬性都存在
+        輸入參數:
+            locations: List[Dict], 所有可用地點的資料
+            requirement: Dict, 使用者的規劃需求，包含：
+                - start_time: 開始時間
+                - end_time: 結束時間
+                - lunch_time: 午餐時間
+                - dinner_time: 晚餐時間
+
+        回傳:
+            List[Dict]: 規劃好的行程列表
         """
         start_time = datetime.now()
 
         try:
-            # 將原始地點資料轉換為 PlaceDetail 物件，這部分不變
+            # 重設時間服務狀態
+            self.time_service.reset()
+            start_location = self._get_start_location(
+                requirement['start_point'])
+            self.geo_service.preload_routes(
+                locations=[PlaceDetail(**loc) for loc in locations],
+                center=PlaceDetail(**start_location),
+                mode=requirement['transport_mode']
+            )
+            # 更新用餐時間設定
+            if requirement.get('lunch_time'):
+                self.time_service.lunch_time = datetime.strptime(
+                    requirement['lunch_time'], '%H:%M').time()
+            if requirement.get('dinner_time'):
+                self.time_service.dinner_time = datetime.strptime(
+                    requirement['dinner_time'], '%H:%M').time()
+
+            # 轉換地點資料
             available_places = [
                 PlaceDetail(**location) if isinstance(location, dict)
                 else location for location in locations
@@ -78,22 +104,50 @@ class TripPlanningSystem:
             context = self._prepare_planning_context(
                 available_places, requirement)
 
-            # 使用 strategy_manager 初始化策略（這裡會使用我們新修改的策略）
+            print("\n=== 開始行程規劃 ===")
+            print(f"規劃起始時間: {context['start_time'].strftime('%H:%M')}")
+            print(f"預計結束時間: {context['end_time'].strftime('%H:%M')}")
+            print(f"午餐時間設定: {self.time_service.lunch_time.strftime('%H:%M')}")
+            print(f"晚餐時間設定: {self.time_service.dinner_time.strftime('%H:%M')}")
+
+            # 初始化策略
             strategy = self.strategy_manager.initialize_strategy(context)
 
-            # 執行規劃，這會使用我們新的評估方法
+            # 執行規劃
             itinerary = strategy.execute(
                 current_location=context['start_location'],
                 available_places=context['available_places'],
                 current_time=context['start_time']
             )
 
+            # 記錄執行時間
             self.execution_time = (datetime.now() - start_time).total_seconds()
+
+            # 統計各時段的規劃結果
+            self._update_period_statistics(itinerary)
+
             return itinerary
 
         except Exception as e:
-            print(f"行程規劃過程中發生錯誤: {str(e)}")
+            print(f"行程規劃失敗: {str(e)}")
             raise
+
+    def _update_period_statistics(self, itinerary: List[Dict]) -> None:
+        """更新各時段的統計資訊"""
+        for item in itinerary:
+            period = self.time_service.get_current_period(
+                datetime.strptime(item['start_time'], '%H:%M')
+            )
+            self.period_statistics[period]['count'] += 1
+            self.period_statistics[period]['time'] += item['duration']
+
+    def print_planning_summary(self) -> None:
+        """輸出規劃統計摘要"""
+        print("\n=== 規劃統計 ===")
+        for period, stats in self.period_statistics.items():
+            if stats['count'] > 0:
+                print(f"{period}: {stats['count']}個地點，"
+                      f"共{stats['time']}分鐘")
 
     def _prepare_planning_context(self, locations: List[PlaceDetail], requirement: Dict) -> Dict:
         """準備規劃上下文

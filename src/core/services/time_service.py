@@ -12,54 +12,74 @@ class TimeService:
     2. 判斷當前適合的活動時段
     3. 管理時間的轉換邏輯
     """
-    
+
     # 系統使用的時間格式常數
     TIME_FORMAT = '%H:%M'
     DATE_FORMAT = '%Y-%m-%d'
 
-    # 預設的用餐時間區間（分鐘）
-    MEAL_TIME_WINDOW = 60
-
     def __init__(self, lunch_time: str = "12:00", dinner_time: str = "18:00"):
-        """初始化時間服務
-
-        輸入參數:
-            lunch_time: 預設午餐時間，格式 "HH:MM"
-            dinner_time: 預設晚餐時間，格式 "HH:MM"
-        """
-        self.lunch_completed = False
-        self.dinner_completed = False
+        """初始化時間服務"""
         self.lunch_time = datetime.strptime(lunch_time, '%H:%M').time()
         self.dinner_time = datetime.strptime(dinner_time, '%H:%M').time()
-
-    def update_meal_status(self, place_period: str) -> None:
-        """更新用餐狀態，使用地點時段而不是整個 PlaceDetail 物件"""
-        if place_period == 'lunch':
-            self.lunch_completed = True
-        elif place_period == 'dinner':
-            self.dinner_completed = True
+        self.lunch_completed = False
+        self.dinner_completed = False
+        self.current_period = 'morning'  # 新增：明確追蹤當前時段
+        self.MEAL_WINDOW = 60
 
     def get_current_period(self, current_time: datetime) -> str:
-        """時段判斷邏輯"""
+        """判斷當前時段
+
+        邏輯：
+        1. 如果目前是lunch或dinner時段，只能通過完成用餐來轉換時段
+        2. 其他時段則根據時間自動轉換
+        """
         current_minutes = current_time.hour * 60 + current_time.minute
         lunch_minutes = self.lunch_time.hour * 60 + self.lunch_time.minute
         dinner_minutes = self.dinner_time.hour * 60 + self.dinner_time.minute
 
-        if not self.lunch_completed:
-            if abs(current_minutes - lunch_minutes) <= 60:
-                return 'lunch'
-            return 'morning'
+        print(f"\n時段判斷:")
+        print(f"當前時間: {current_time.strftime('%H:%M')}")
+        print(f"目前時段: {self.current_period}")
+        print(f"午餐完成: {self.lunch_completed}")
+        print(f"晚餐完成: {self.dinner_completed}")
 
-        if not self.dinner_completed:
-            if abs(current_minutes - dinner_minutes) <= 60:
-                return 'dinner'
-            return 'afternoon'
+        # 根據當前時段進行判斷
+        if self.current_period == 'morning':
+            if abs(current_minutes - lunch_minutes) <= self.MEAL_WINDOW:
+                self.current_period = 'lunch'
+                print("轉換時段: morning -> lunch")
 
-        return 'night'
+        elif self.current_period == 'lunch':
+            if self.lunch_completed:
+                self.current_period = 'afternoon'
+                print("轉換時段: lunch -> afternoon（午餐已完成）")
+
+        elif self.current_period == 'afternoon':
+            if abs(current_minutes - dinner_minutes) <= self.MEAL_WINDOW:
+                self.current_period = 'dinner'
+                print("轉換時段: afternoon -> dinner")
+
+        elif self.current_period == 'dinner':
+            if self.dinner_completed:
+                self.current_period = 'night'
+                print("轉換時段: dinner -> night（晚餐已完成）")
+
+        return self.current_period
+
+    def update_meal_status(self, place_period: str) -> None:
+        """更新用餐狀態"""
+        if place_period == 'lunch' and self.current_period == 'lunch':
+            self.lunch_completed = True
+            print("已更新：午餐完成")
+        elif place_period == 'dinner' and self.current_period == 'dinner':
+            self.dinner_completed = True
+            print("已更新：晚餐完成")
 
     def reset(self) -> None:
+        """重設所有狀態"""
         self.lunch_completed = False
         self.dinner_completed = False
+        self.current_period = 'morning'
 
     def _parse_time(self, time_str: str) -> Optional[time]:
         """解析時間字串為 time 物件
@@ -202,9 +222,9 @@ class TimeService:
         # 根據用餐時間判斷時段
         if self.lunch_time:
             lunch_start = self._add_minutes_to_time(
-                self.lunch_time, -self.MEAL_TIME_WINDOW)
+                self.lunch_time, -self.MEAL_WINDOW)
             lunch_end = self._add_minutes_to_time(
-                self.lunch_time, self.MEAL_TIME_WINDOW)
+                self.lunch_time, self.MEAL_WINDOW)
 
             if time_obj < lunch_start:
                 return 'morning'
@@ -213,11 +233,11 @@ class TimeService:
 
         if self.dinner_time:
             dinner_start = self._add_minutes_to_time(
-                self.dinner_time, -self.MEAL_TIME_WINDOW)
+                self.dinner_time, -self.MEAL_WINDOW)
             dinner_end = self._add_minutes_to_time(
-                self.dinner_time, self.MEAL_TIME_WINDOW)
+                self.dinner_time, self.MEAL_WINDOW)
 
-            if (self.lunch_time and time_obj > self._add_minutes_to_time(self.lunch_time, self.MEAL_TIME_WINDOW)):
+            if (self.lunch_time and time_obj > self._add_minutes_to_time(self.lunch_time, self.MEAL_WINDOW)):
                 if time_obj < dinner_start:
                     return 'afternoon'
                 elif dinner_start <= time_obj <= dinner_end:

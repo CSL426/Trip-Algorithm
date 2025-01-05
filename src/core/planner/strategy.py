@@ -176,57 +176,56 @@ class BasePlanningStrategy(ABC):
                           current_time: datetime) -> Optional[Tuple[PlaceDetail, Dict]]:
         """選擇下一個要遊玩的地點
 
-        這個方法使用兩階段評估策略：
-        1. 先用直線距離和時段篩選出候選地點
-        2. 再對候選地點進行詳細評估
+        執行步驟：
+        1. 取得當前時段
+        2. 篩選符合時段的地點
+        3. 用直線距離和預估時間快速篩選
+        4. 對候選地點進行精確評分
+        5. 選擇最佳地點
 
         輸入參數:
-            current_location: 目前位置
-            available_places: 可選擇的地點列表
-            current_time: 目前時間
+            current_location: PlaceDetail - 目前位置
+            available_places: List[PlaceDetail] - 可選擇的地點
+            current_time: datetime - 當前時間
 
         回傳:
-            Tuple[PlaceDetail, Dict]: (選中的地點, 交通資訊)
-            如果找不到合適的地點則回傳 None
+            Tuple[PlaceDetail, Dict] or None - (選中的地點, 交通資訊) 或 None
         """
-        # 取得當前應該規劃的時段
+        # 取得當前時段
         current_period = self.time_service.get_current_period(current_time)
-        print(f"\n當前時間: {current_time.strftime('%H:%M')}")
-        print(f"目前時段: {current_period}")
 
-        # 先篩選符合當前時段的地點
+        # 篩選符合當前時段的地點
         suitable_places = [
             place for place in available_places
-            if place.period == current_period
+            if (place.name not in [p.name for p in self.visited_places] and  # 避免重複選擇
+                place.period == self.time_service.get_current_period(current_time))  # 確保符合當前時段
         ]
 
         if not suitable_places:
             print(f"找不到適合的{current_period}時段地點")
             return None
 
-        print(f"符合時段的地點數: {len(suitable_places)}")
-
-        # 第一階段：使用直線距離進行初步評估
-        scored_places = []
+        # 第一階段：使用直線距離進行初步篩選
+        candidates = []
         for place in suitable_places:
-            # 計算直線距離進行初步篩選
+            # 計算直線距離
             distance = self.geo_service.calculate_distance(
                 {'lat': current_location.lat, 'lon': current_location.lon},
                 {'lat': place.lat, 'lon': place.lon}
             )
 
-            # 如果距離太遠，直接跳過
-            if distance > 30:  # 30公里為距離限制
+            # 超過距離限制就跳過
+            if distance > self.preferences.get('distance_threshold', 30):
                 continue
 
-            # 預估交通資訊
-            travel_info = self._calculate_estimated_travel_info(
-                current_location,
-                place,
+            # 使用預估交通資訊
+            travel_info = self.geo_service._calculate_estimated_travel_info(
+                {'lat': current_location.lat, 'lon': current_location.lon},
+                {'lat': place.lat, 'lon': place.lon},
                 self.travel_mode
             )
 
-            # 計算綜合評分
+            # 計算預估評分
             score = self.place_scoring.calculate_score(
                 place=place,
                 current_location=current_location,
@@ -235,30 +234,43 @@ class BasePlanningStrategy(ABC):
             )
 
             if score > float('-inf'):
-                scored_places.append((place, score, travel_info))
+                candidates.append((place, score, travel_info))
 
-        if not scored_places:
-            print("沒有找到合適的地點")
+        if not candidates:
+            print("沒有找到合適的候選地點")
             return None
 
-        # 選出前幾名的地點
-        scored_places.sort(key=lambda x: x[1], reverse=True)
-        top_places = scored_places[:3]  # 取前3名
+        # 選出前3名的地點進行精確評估
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        top_candidates = candidates[:3]
 
-        # 隨機選擇一個地點
-        import random
-        selected_place, _, _ = random.choice(top_places)
-        print(f"選中地點: {selected_place.name}")
+        # 第二階段：只對前3名地點取得精確路線
+        final_candidates = []
+        for place, score, _ in top_candidates:
+            # 呼叫 Google Maps API 取得精確路線
+            actual_travel_info = self.geo_service.get_route(
+                origin={"lat": current_location.lat,
+                        "lon": current_location.lon},
+                destination={"lat": place.lat, "lon": place.lon},
+                mode=self.travel_mode,
+                departure_time=current_time
+            )
 
-        # 取得精確路線資訊
-        actual_travel_info = self.geo_service.get_route(
-            origin={"lat": current_location.lat, "lon": current_location.lon},
-            destination={"lat": selected_place.lat, "lon": selected_place.lon},
-            mode=self.travel_mode,
-            departure_time=current_time
-        )
+            # 重新計算實際評分
+            actual_score = self.place_scoring.calculate_score(
+                place=place,
+                current_location=current_location,
+                current_time=current_time,
+                travel_time=actual_travel_info['duration_minutes']
+            )
 
-        return selected_place, actual_travel_info
+            final_candidates.append((place, actual_score, actual_travel_info))
+
+        # 選擇最終得分最高的地點
+        selected = max(final_candidates, key=lambda x: x[1])
+        print(f"選中地點: {selected[0].name}")
+
+        return selected[0], selected[2]
 
     def _calculate_estimated_travel_info(self,
                                          current_location: PlaceDetail,
@@ -341,31 +353,112 @@ class BasePlanningStrategy(ABC):
         """
         return arrival_time + timedelta(minutes=duration_minutes)
 
-    @abstractmethod
     def select_next_place(self,
                           current_location: PlaceDetail,
                           available_places: List[PlaceDetail],
                           current_time: datetime) -> Optional[Tuple[PlaceDetail, Dict]]:
         """選擇下一個要遊玩的地點
 
-        這是策略最核心的方法，決定下一個最適合的地點。
-        每個具體策略都需要實現自己的選擇邏輯。
-
-        參數:
-            current_location: 當前位置
-            available_places: 可選擇的地點列表
-            current_time: 當前時間
-
-        回傳:
-            Tuple[PlaceDetail, Dict]: (選中的地點, 交通資訊)
-            如果沒有合適的地點則回傳 None
+        選擇邏輯：
+        1. 根據當前時間判斷時段
+        2. 只選擇符合當前時段的地點
+        3. 先用直線距離篩選最近的地點
+        4. 對候選地點進行詳細評分
+        5. 選出最佳地點並更新狀態
         """
+        # 1. 先剔除已訪問的地點（包含名稱相同的地點）
+        unvisited_places = [
+            place for place in available_places
+            if place.name not in [p.name for p in self.visited_places]
+        ]
 
-        print(f"正在評估 {len(available_places)} 個地點")
+        # 2. 獲取當前時段並檢查狀態合理性
+        current_period = self.time_service.get_current_period(current_time)
+        if current_period in ['lunch', 'dinner']:
+            if current_period == 'lunch' and self.time_service.lunch_completed:
+                print("午餐已完成，應該進入下午時段")
+                current_period = 'afternoon'
+            elif current_period == 'dinner' and self.time_service.dinner_completed:
+                print("晚餐已完成，應該進入晚上時段")
+                current_period = 'night'
+        # 取得當前時段
+        current_period = self.time_service.get_current_period(current_time)
+        print(f"\n開始選擇地點:")
+        print(f"當前時間: {current_time.strftime('%H:%M')}")
+        print(f"當前時段: {current_period}")
 
-        # 加入這行來看實際呼叫 API 的次數
-        print("開始初步評估階段...")
-        pass
+        # 篩選符合時段且未訪問的地點
+        suitable_places = [
+            place for place in available_places
+            if (place.period == current_period and
+                place.name not in [p.name for p in self.visited_places])
+        ]
+
+        if not suitable_places:
+            print(f"找不到符合{current_period}時段的地點")
+            return None
+
+        print(f"符合時段的地點數量: {len(suitable_places)}")
+
+        # 按照直線距離排序並選出最近的10個地點
+        distance_candidates = []
+        for place in suitable_places:
+            distance = self.geo_service.calculate_distance(
+                {'lat': current_location.lat, 'lon': current_location.lon},
+                {'lat': place.lat, 'lon': place.lon}
+            )
+            if distance <= self.preferences.get('distance_threshold', 30):
+                distance_candidates.append((place, distance))
+
+        # 只保留最近的10個地點
+        distance_candidates.sort(key=lambda x: x[1])
+        closest_places = distance_candidates[:10]
+
+        if not closest_places:
+            print("沒有在可接受距離內的地點")
+            return None
+
+        print(f"候選地點數量: {len(closest_places)}")
+
+        # 對最近的地點進行評分
+        scored_places = []
+        for place, _ in closest_places:
+            # 取得實際路線資訊
+            travel_info = self.geo_service.get_route(
+                origin={"lat": current_location.lat,
+                        "lon": current_location.lon},
+                destination={"lat": place.lat, "lon": place.lon},
+                mode=self.travel_mode,
+                departure_time=current_time
+            )
+
+            # 計算綜合評分
+            score = self.place_scoring.calculate_score(
+                place=place,
+                current_location=current_location,
+                current_time=current_time,
+                travel_time=travel_info['duration_minutes']
+            )
+
+            if score > float('-inf'):
+                scored_places.append((place, score, travel_info))
+                print(f"地點 {place.name} 評分: {score:.2f}")
+
+        if not scored_places:
+            return None
+
+        # 選擇評分最高的地點
+        selected = max(scored_places, key=lambda x: x[1])
+        selected_place, _, travel_info = selected
+
+        print(f"\n選中地點: {selected_place.name}")
+        print(f"預計交通時間: {travel_info['duration_minutes']}分鐘")
+
+        # 更新用餐狀態（如果是用餐地點）
+        if selected_place.period in ['lunch', 'dinner']:
+            self.time_service.update_meal_status(selected_place.period)
+
+        return selected_place, travel_info
 
     def _create_itinerary_item(self,
                                place: PlaceDetail,

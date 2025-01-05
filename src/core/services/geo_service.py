@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Union
 import math
 import googlemaps
+from src.core.models.place import PlaceDetail
 from src.core.utils.cache_decorator import geo_cache
 from src.config.config import GOOGLE_MAPS_API_KEY
 
@@ -372,18 +373,96 @@ class GeoService:
         except (ValueError, TypeError):
             return None
 
-    @geo_cache(maxsize=128)
+    def _calculate_estimated_travel_info(self,
+                                         origin: Dict[str, float],
+                                         destination: Dict[str, float],
+                                         mode: str) -> Dict:
+        """計算預估的交通資訊（不需要 API）
+
+        輸入參數:
+            origin: 起點座標 {'lat': float, 'lon': float}
+            destination: 終點座標 {'lat': float, 'lon': float}
+            mode: 交通方式('driving'/'transit'/'walking'/'bicycling')
+
+        回傳:
+            Dict: {
+                'distance_km': float,     # 預估距離（公里）
+                'duration_minutes': int,   # 預估時間（分鐘）
+                'is_estimated': True      # 標記為預估資料
+            }
+        """
+        # 計算直線距離
+        distance = self.calculate_distance(origin, destination)
+
+        # 根據交通方式選擇預設速度
+        speed = self.DEFAULT_SPEEDS.get(mode, 30)  # 預設 30 km/h
+
+        # 計算預估時間（分鐘）
+        duration = (distance / speed) * 60
+
+        # 加入路程曲折的修正係數（實際路程通常比直線距離長）
+        distance_factor = 1.3 if mode == 'driving' else 1.2  # 開車路線較曲折
+        time_factor = 1.4 if mode == 'driving' else 1.3     # 開車考慮紅綠燈等因素
+
+        return {
+            'distance_km': round(distance * distance_factor, 1),
+            'duration_minutes': int(duration * time_factor),
+            'is_estimated': True
+        }
+
+    @geo_cache(maxsize=256)  # 增加快取容量
     def get_route(self,
                   origin: Dict[str, float],
                   destination: Dict[str, float],
                   mode: str = 'driving',
                   departure_time: Optional[datetime] = None) -> Dict:
-        """規劃兩點間的路線"""
+        """規劃兩點間的路線（優先使用快取）
+
+        輸入參數:
+            origin: 起點座標 {'lat': float, 'lon': float}
+            destination: 終點座標 {'lat': float, 'lon': float}
+            mode: 交通方式
+            departure_time: 出發時間，預設為當前時間
+
+        回傳:
+            Dict: 路線資訊，包含距離、時間等
+        """
         try:
             if self.has_google_maps:
                 return self._get_google_maps_route(
                     origin, destination, mode, departure_time)
         except Exception as e:
-            print(f"警告：Google Maps 路線規劃失敗，切換到備用方案: {str(e)}")
+            print(f"Google Maps API 呼叫失敗: {str(e)}")
 
-        return self._get_estimated_route(origin, destination, mode)
+        # API 失敗時使用預估方式
+        return self._calculate_estimated_travel_info(origin, destination, mode)
+
+    def preload_routes(self,
+                       locations: List[PlaceDetail],
+                       center: PlaceDetail,
+                       mode: str = 'driving') -> None:
+        """預先載入所有可能需要的路線資訊
+
+        輸入參數:
+            locations: 所有可能的地點列表
+            center: 中心點（通常是起點）
+            mode: 交通方式
+        """
+        print("開始預先載入路線資訊...")
+
+        # 先計算所有直線距離
+        for location in locations:
+            distance = self.calculate_distance(
+                {'lat': center.lat, 'lon': center.lon},
+                {'lat': location.lat, 'lon': location.lon}
+            )
+
+            # 只預載入在合理距離內的路線
+            if distance <= 30:  # 30公里內
+                self.get_route(
+                    origin={'lat': center.lat, 'lon': center.lon},
+                    destination={'lat': location.lat, 'lon': location.lon},
+                    mode=mode
+                )
+
+        print("路線資訊預載入完成")

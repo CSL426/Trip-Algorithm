@@ -33,7 +33,10 @@ class TripPlanningSystem:
         這三個服務相互配合，共同支援行程規劃的核心功能。
         """
         # 初始化基礎服務
-        self.time_service = TimeService()
+        self.time_service = TimeService(
+            lunch_time="12:00",  # 預設午餐時間
+            dinner_time="18:00"  # 預設晚餐時間
+        )
         self.geo_service = GeoService()
 
         # 初始化評分服務，需要時間服務和地理服務的支援
@@ -65,7 +68,7 @@ class TripPlanningSystem:
         start_time = datetime.now()
 
         try:
-            # 將原始地點資料轉換為 PlaceDetail 物件
+            # 將原始地點資料轉換為 PlaceDetail 物件，這部分不變
             available_places = [
                 PlaceDetail(**location) if isinstance(location, dict)
                 else location for location in locations
@@ -75,10 +78,10 @@ class TripPlanningSystem:
             context = self._prepare_planning_context(
                 available_places, requirement)
 
-            # 初始化適當的策略
+            # 使用 strategy_manager 初始化策略（這裡會使用我們新修改的策略）
             strategy = self.strategy_manager.initialize_strategy(context)
 
-            # 執行規劃
+            # 執行規劃，這會使用我們新的評估方法
             itinerary = strategy.execute(
                 current_location=context['start_location'],
                 available_places=context['available_places'],

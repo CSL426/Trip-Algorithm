@@ -5,21 +5,14 @@ from typing import Any, Dict, List, Union, Tuple, Optional
 
 
 class TimeService:
-    """時間服務類別
+    """時間管理服務
 
-    這個服務負責處理所有與時間相關的操作，包括：
-    1. 時間格式的驗證和轉換
-    2. 時間區間的判斷
-    3. 營業時間的處理
-    4. 用餐時段的管理
-
-    設計考量：
-    - 所有時間相關的邏輯都應該集中在這裡
-    - 提供統一的時間格式標準
-    - 支援跨日期的時間處理（如夜市營業時間）
-    - 考慮不同時區的可能性（預留擴充空間）
+    負責處理所有與時間相關的判斷，特別是：
+    1. 追蹤用餐狀態
+    2. 判斷當前適合的活動時段
+    3. 管理時間的轉換邏輯
     """
-
+    
     # 系統使用的時間格式常數
     TIME_FORMAT = '%H:%M'
     DATE_FORMAT = '%Y-%m-%d'
@@ -27,21 +20,46 @@ class TimeService:
     # 預設的用餐時間區間（分鐘）
     MEAL_TIME_WINDOW = 60
 
-    def __init__(self, lunch_time: Optional[str] = None,
-                 dinner_time: Optional[str] = None,
-                 time_zone: str = 'Asia/Taipei'):
+    def __init__(self, lunch_time: str = "12:00", dinner_time: str = "18:00"):
         """初始化時間服務
 
-        參數:
-            lunch_time: 午餐時間，格式為 HH:MM
-            dinner_time: 晚餐時間，格式為 HH:MM
-            time_zone: 時區名稱，預設為台北時間
+        輸入參數:
+            lunch_time: 預設午餐時間，格式 "HH:MM"
+            dinner_time: 預設晚餐時間，格式 "HH:MM"
         """
-        # 設定用餐時間
-        self.lunch_time = self._parse_time(lunch_time) if lunch_time else None
-        self.dinner_time = self._parse_time(
-            dinner_time) if dinner_time else None
-        self.time_zone = time_zone
+        self.lunch_completed = False
+        self.dinner_completed = False
+        self.lunch_time = datetime.strptime(lunch_time, '%H:%M').time()
+        self.dinner_time = datetime.strptime(dinner_time, '%H:%M').time()
+
+    def update_meal_status(self, place_period: str) -> None:
+        """更新用餐狀態，使用地點時段而不是整個 PlaceDetail 物件"""
+        if place_period == 'lunch':
+            self.lunch_completed = True
+        elif place_period == 'dinner':
+            self.dinner_completed = True
+
+    def get_current_period(self, current_time: datetime) -> str:
+        """時段判斷邏輯"""
+        current_minutes = current_time.hour * 60 + current_time.minute
+        lunch_minutes = self.lunch_time.hour * 60 + self.lunch_time.minute
+        dinner_minutes = self.dinner_time.hour * 60 + self.dinner_time.minute
+
+        if not self.lunch_completed:
+            if abs(current_minutes - lunch_minutes) <= 60:
+                return 'lunch'
+            return 'morning'
+
+        if not self.dinner_completed:
+            if abs(current_minutes - dinner_minutes) <= 60:
+                return 'dinner'
+            return 'afternoon'
+
+        return 'night'
+
+    def reset(self) -> None:
+        self.lunch_completed = False
+        self.dinner_completed = False
 
     def _parse_time(self, time_str: str) -> Optional[time]:
         """解析時間字串為 time 物件

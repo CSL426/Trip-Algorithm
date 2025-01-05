@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
+import random
 from typing import List, Dict, Optional, Tuple
 from src.core.models.place import PlaceDetail
 from src.core.services.time_service import TimeService
@@ -62,56 +63,17 @@ class BasePlanningStrategy(ABC):
         # 新增：初始化行程列表
         self._itinerary = []
 
-    @abstractmethod
-    def select_next_place(self,
-                          current_location: PlaceDetail,
-                          available_places: List[PlaceDetail],
-                          current_time: datetime) -> Optional[Tuple[PlaceDetail, Dict]]:
-        """選擇下一個要遊玩的地點
-
-        這是策略最核心的方法，決定下一個最適合的地點。
-        每個具體策略都需要實現自己的選擇邏輯。
-
-        參數:
-            current_location: 當前位置
-            available_places: 可選擇的地點列表
-            current_time: 當前時間
-
-        回傳:
-            Tuple[PlaceDetail, Dict]: (選中的地點, 交通資訊)
-            如果沒有合適的地點則回傳 None
-        """
-        pass
-
-    @abstractmethod
-    def is_feasible(self,
-                    place: PlaceDetail,
-                    current_location: PlaceDetail,
-                    current_time: datetime,
-                    travel_info: Dict) -> bool:
-        """判斷是否可以將地點加入行程
-
-        檢查加入新地點是否符合所有限制條件：
-        1. 時間限制（包含交通和遊玩時間）
-        2. 距離限制
-        3. 其他策略特定的限制
-
-        參數:
-            place: 要檢查的地點
-            current_location: 當前位置
-            current_time: 當前時間
-            travel_info: 交通資訊
-
-        回傳:
-            bool: 是否可以加入行程
-        """
-        pass
-
     def execute(self,
                 current_location: PlaceDetail,
                 available_places: List[PlaceDetail],
                 current_time: datetime) -> List[Dict]:
-        """執行行程規劃
+        """執行行程規劃主要流程
+
+        這個方法負責整個行程的規劃流程，包含：
+        1. 初始化行程狀態
+        2. 循環選擇下一個地點
+        3. 更新時段狀態
+        4. 建立完整行程
 
         輸入參數:
             current_location: 起點位置 (PlaceDetail)
@@ -130,17 +92,28 @@ class BasePlanningStrategy(ABC):
             - transport_details: 交通方式
             - route_info: 路線資訊(如果有)
         """
-        # 確保行程列表已初始化
+        # 初始化行程列表
         if not hasattr(self, '_itinerary'):
             self._itinerary = []
         else:
-            self._itinerary.clear()  # 清空舊的行程資料
+            self._itinerary.clear()
+
+        print(f"\n=== 開始規劃行程 ===")
+        print(f"起點: {current_location.name}")
+        print(f"開始時間: {current_time.strftime('%H:%M')}")
+
+        # 初始化規劃狀態
         remaining_places = available_places.copy()
         current_loc = current_location
         visit_time = current_time
+        iteration = 1
 
+        # 主要規劃循環
         while remaining_places and visit_time < self.end_time:
-            # 尋找下一個最佳地點
+            print(f"\n==== 選擇第 {iteration} 個地點 ====")
+            iteration_start = datetime.now()
+
+            # 選擇下一個地點
             next_place = self.select_next_place(
                 current_loc,
                 remaining_places,
@@ -148,12 +121,15 @@ class BasePlanningStrategy(ABC):
             )
 
             if not next_place:
+                print("找不到合適的下一個地點，結束規劃")
                 break
 
             place, travel_info = next_place
+            print(f"選擇了地點: {place.name}")
 
             # 檢查可行性
             if not self.is_feasible(place, current_loc, visit_time, travel_info):
+                print("該地點不可行，結束規劃")
                 break
 
             # 計算到達和離開時間
@@ -162,19 +138,176 @@ class BasePlanningStrategy(ABC):
             departure_time = self._calculate_departure_time(
                 arrival_time, place.duration_min)
 
-            # 建立並儲存行程項目
+            # 建立行程項目
             itinerary_item = self._create_itinerary_item(
                 place, arrival_time, departure_time, travel_info)
             self._itinerary.append(itinerary_item)
 
-            # 更新狀態
+            # 更新規劃狀態
             current_loc = place
             visit_time = departure_time
             remaining_places.remove(place)
             self.visited_places.append(place)
             self.total_distance += travel_info['distance_km']
 
+            # 更新用餐狀態
+            self.time_service.update_meal_status(place.period)
+
+            # 顯示這次迭代的資訊
+            iteration_time = (datetime.now() - iteration_start).total_seconds()
+            print(f"第 {iteration} 個地點規劃完成:")
+            print(f"- 到達時間: {arrival_time.strftime('%H:%M')}")
+            print(f"- 離開時間: {departure_time.strftime('%H:%M')}")
+            print(f"- 交通時間: {travel_info['duration_minutes']} 分鐘")
+            print(f"- 停留時間: {place.duration_min} 分鐘")
+            print(f"- 本次迭代耗時: {iteration_time:.2f} 秒")
+
+            iteration += 1
+
+        print(f"\n=== 行程規劃完成 ===")
+        print(f"規劃地點數: {len(self._itinerary)}")
+        print(f"總行程距離: {self.total_distance:.1f} 公里")
+
         return self._itinerary
+
+    def select_next_place(self,
+                          current_location: PlaceDetail,
+                          available_places: List[PlaceDetail],
+                          current_time: datetime) -> Optional[Tuple[PlaceDetail, Dict]]:
+        """選擇下一個要遊玩的地點
+
+        這個方法使用兩階段評估策略：
+        1. 先用直線距離和時段篩選出候選地點
+        2. 再對候選地點進行詳細評估
+
+        輸入參數:
+            current_location: 目前位置
+            available_places: 可選擇的地點列表
+            current_time: 目前時間
+
+        回傳:
+            Tuple[PlaceDetail, Dict]: (選中的地點, 交通資訊)
+            如果找不到合適的地點則回傳 None
+        """
+        # 取得當前應該規劃的時段
+        current_period = self.time_service.get_current_period(current_time)
+        print(f"\n當前時間: {current_time.strftime('%H:%M')}")
+        print(f"目前時段: {current_period}")
+
+        # 先篩選符合當前時段的地點
+        suitable_places = [
+            place for place in available_places
+            if place.period == current_period
+        ]
+
+        if not suitable_places:
+            print(f"找不到適合的{current_period}時段地點")
+            return None
+
+        print(f"符合時段的地點數: {len(suitable_places)}")
+
+        # 第一階段：使用直線距離進行初步評估
+        scored_places = []
+        for place in suitable_places:
+            # 計算直線距離進行初步篩選
+            distance = self.geo_service.calculate_distance(
+                {'lat': current_location.lat, 'lon': current_location.lon},
+                {'lat': place.lat, 'lon': place.lon}
+            )
+
+            # 如果距離太遠，直接跳過
+            if distance > 30:  # 30公里為距離限制
+                continue
+
+            # 預估交通資訊
+            travel_info = self._calculate_estimated_travel_info(
+                current_location,
+                place,
+                self.travel_mode
+            )
+
+            # 計算綜合評分
+            score = self.place_scoring.calculate_score(
+                place=place,
+                current_location=current_location,
+                current_time=current_time,
+                travel_time=travel_info['duration_minutes']
+            )
+
+            if score > float('-inf'):
+                scored_places.append((place, score, travel_info))
+
+        if not scored_places:
+            print("沒有找到合適的地點")
+            return None
+
+        # 選出前幾名的地點
+        scored_places.sort(key=lambda x: x[1], reverse=True)
+        top_places = scored_places[:3]  # 取前3名
+
+        # 隨機選擇一個地點
+        import random
+        selected_place, _, _ = random.choice(top_places)
+        print(f"選中地點: {selected_place.name}")
+
+        # 取得精確路線資訊
+        actual_travel_info = self.geo_service.get_route(
+            origin={"lat": current_location.lat, "lon": current_location.lon},
+            destination={"lat": selected_place.lat, "lon": selected_place.lon},
+            mode=self.travel_mode,
+            departure_time=current_time
+        )
+
+        return selected_place, actual_travel_info
+
+    def _calculate_estimated_travel_info(self,
+                                         current_location: PlaceDetail,
+                                         destination: PlaceDetail,
+                                         mode: str) -> Dict:
+        """計算預估的交通資訊
+
+        使用直線距離和預設速度來估算交通時間，這樣可以快速得到初步評估，
+        不需要呼叫 Google Maps API。
+
+        輸入參數:
+            current_location: 目前位置
+            destination: 目標地點
+            mode: 交通方式
+
+        回傳:
+            Dict: {
+                'distance_km': float,      # 預估距離（公里）
+                'duration_minutes': int,    # 預估時間（分鐘）
+                'is_estimated': True       # 標記為預估資料
+            }
+        """
+        # 使用 GeoService 計算直線距離
+        distance = self.geo_service.calculate_distance(
+            {'lat': current_location.lat, 'lon': current_location.lon},
+            {'lat': destination.lat, 'lon': destination.lon}
+        )
+
+        # 根據交通方式選擇預設速度（公里/小時）
+        speeds = {
+            'driving': 40,
+            'transit': 30,
+            'walking': 5,
+            'bicycling': 15
+        }
+        speed = speeds.get(mode, 30)  # 預設使用 30 km/h
+
+        # 計算預估時間（分鐘）
+        duration = (distance / speed) * 60
+
+        # 加入路程曲折的修正係數（實際路程通常比直線距離長）
+        distance_factor = 1.3 if mode == 'driving' else 1.2
+        time_factor = 1.4 if mode == 'driving' else 1.3
+
+        return {
+            'distance_km': round(distance * distance_factor, 1),
+            'duration_minutes': int(duration * time_factor),
+            'is_estimated': True
+        }
 
     def _calculate_arrival_time(self,
                                 start_time: datetime,
@@ -207,6 +340,32 @@ class BasePlanningStrategy(ABC):
             datetime: 預計離開時間
         """
         return arrival_time + timedelta(minutes=duration_minutes)
+
+    @abstractmethod
+    def select_next_place(self,
+                          current_location: PlaceDetail,
+                          available_places: List[PlaceDetail],
+                          current_time: datetime) -> Optional[Tuple[PlaceDetail, Dict]]:
+        """選擇下一個要遊玩的地點
+
+        這是策略最核心的方法，決定下一個最適合的地點。
+        每個具體策略都需要實現自己的選擇邏輯。
+
+        參數:
+            current_location: 當前位置
+            available_places: 可選擇的地點列表
+            current_time: 當前時間
+
+        回傳:
+            Tuple[PlaceDetail, Dict]: (選中的地點, 交通資訊)
+            如果沒有合適的地點則回傳 None
+        """
+
+        print(f"正在評估 {len(available_places)} 個地點")
+
+        # 加入這行來看實際呼叫 API 的次數
+        print("開始初步評估階段...")
+        pass
 
     def _create_itinerary_item(self,
                                place: PlaceDetail,
@@ -255,6 +414,30 @@ class BasePlanningStrategy(ABC):
         if 0 <= index < len(self._itinerary):
             return self._itinerary[index].get('travel_time', 0)
         return 0
+
+    @abstractmethod
+    def is_feasible(self,
+                    place: PlaceDetail,
+                    current_location: PlaceDetail,
+                    current_time: datetime,
+                    travel_info: Dict) -> bool:
+        """判斷是否可以將地點加入行程
+
+        檢查加入新地點是否符合所有限制條件：
+        1. 時間限制（包含交通和遊玩時間）
+        2. 距離限制
+        3. 其他策略特定的限制
+
+        參數:
+            place: 要檢查的地點
+            current_location: 當前位置
+            current_time: 當前時間
+            travel_info: 交通資訊
+
+        回傳:
+            bool: 是否可以加入行程
+        """
+        pass
 
 
 class StandardPlanningStrategy(BasePlanningStrategy):

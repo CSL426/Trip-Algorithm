@@ -86,7 +86,7 @@ class GoogleMapsService:
             address: 地址或地點名稱
 
         回傳:
-            Dict: {'lat': 緯度, 'lng': 經度}
+            Dict: {'lat': 緯度, 'lon': 經度}
         """
         try:
             result = self.client.geocode(address)
@@ -96,22 +96,22 @@ class GoogleMapsService:
             location = result[0]['geometry']['location']
             return {
                 'lat': location['lat'],
-                'lng': location['lng']
+                'lon': location['lon']
             }
         except Exception as e:
             raise RuntimeError(f"地理編碼錯誤: {str(e)}")
 
     @staticmethod
-    def _format_coordinates(lat: float, lng: float) -> str:
+    def _format_coordinates(lat: float, lon: float) -> str:
         """格式化座標字串"""
-        return f"{lat},{lng}"
+        return f"{lat},{lon}"
 
     @staticmethod
     def _validate_coordinates(origin: Tuple[float, float],
                               destination: Tuple[float, float]) -> None:
         """驗證座標範圍"""
-        for lat, lng in [origin, destination]:
-            if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        for lat, lon in [origin, destination]:
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
                 raise ValueError("座標超出範圍")
 
     @staticmethod

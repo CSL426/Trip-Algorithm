@@ -113,7 +113,7 @@ def geo_cache(maxsize: int = 256):
 
             # 存入快取
             cache[cache_key] = result
-            print(f"新增路線資訊到快取: {cache_key}")
+            # print(f"新增路線資訊到快取: {cache_key}")
 
             # 管理快取大小
             if len(cache) > maxsize:

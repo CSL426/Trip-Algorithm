@@ -86,7 +86,7 @@ class GeoService:
 
         return round(self.EARTH_RADIUS * c, 1)
 
-    @geo_cache(maxsize=128)
+    @geo_cache(maxsize=256)
     def get_route(self,
                   origin: Dict[str, float],
                   destination: Dict[str, float],
@@ -94,41 +94,30 @@ class GeoService:
                   departure_time: Optional[datetime] = None) -> Dict:
         """規劃兩點間的路線
 
-        這個方法會嘗試使用 Google Maps API 獲取最佳路線。
-        如果 API 無法使用，會自動切換到備用的估算方式。
-        所有的規劃結果都會被快取以提升效能。
-
-        參數:
-            origin: 起點座標 {'lat': float, 'lon': float}
-            destination: 終點座標 {'lat': float, 'lon': float}
-            mode: 交通方式（'driving', 'transit', 'walking', 'bicycling'）
-            departure_time: 出發時間，如果為 None 則使用當前時間
+        輸入參數:
+            origin: Dict - 起點座標 {'lat': float, 'lon': float}
+            destination: Dict - 終點座標 {'lat': float, 'lon': float}
+            mode: str - 交通方式('driving'/'transit'/'walking'/'bicycling')
+            departure_time: Optional[datetime] - 出發時間，預設為當前時間
 
         回傳:
             Dict: {
-                'distance_km': float,      # 距離（公里）
-                'duration_minutes': int,    # 預估時間（分鐘）
-                'route_info': Optional[Dict], # Google Maps 路線資訊（若有）
-                'is_estimated': bool,      # 是否為估算結果
-                'transport_mode': str      # 實際使用的交通方式
+                'distance_km': float,     # 預估距離（公里）
+                'duration_minutes': int,   # 預估時間（分鐘）
+                'route_info': Dict,       # Google Maps 路線資訊
+                'transport_mode': str     # 使用的交通方式
             }
 
-        使用範例:
-            >>> result = geo_service.get_route(
-                    {'lat': 25.0, 'lon': 121.5},
-                    {'lat': 25.1, 'lon': 121.6},
-                    mode='driving'
-                )
+        若 API 呼叫失敗，會使用直線距離預估
         """
         try:
             if self.has_google_maps:
-                return self._get_google_maps_route(
-                    origin, destination, mode, departure_time)
+                return self._get_google_maps_route(origin, destination, mode, departure_time)
         except Exception as e:
             print(f"警告：Google Maps 路線規劃失敗，切換到備用方案: {str(e)}")
 
-        # 如果 Google Maps 失敗或不可用，使用備用方案
-        return self._get_estimated_route(origin, destination, mode)
+        # API 失敗時使用預估方式
+        return self._calculate_estimated_travel_info(origin, destination, mode)
 
     def _get_google_maps_route(self,
                                origin: Dict[str, float],
@@ -410,59 +399,34 @@ class GeoService:
             'is_estimated': True
         }
 
-    @geo_cache(maxsize=256)  # 增加快取容量
-    def get_route(self,
-                  origin: Dict[str, float],
-                  destination: Dict[str, float],
-                  mode: str = 'driving',
-                  departure_time: Optional[datetime] = None) -> Dict:
-        """規劃兩點間的路線（優先使用快取）
+    def geocode(self, address: str) -> Dict[str, float]:
+        """將地址或地點名稱轉換為座標
 
         輸入參數:
-            origin: 起點座標 {'lat': float, 'lon': float}
-            destination: 終點座標 {'lat': float, 'lon': float}
-            mode: 交通方式
-            departure_time: 出發時間，預設為當前時間
+            address: str - 地址或地點名稱
 
         回傳:
-            Dict: 路線資訊，包含距離、時間等
+            Dict[str, float] - 包含經緯度的字典 {'lat': 緯度, 'lon': 經度}
+
+        異常:
+            RuntimeError - 如果無法取得座標
         """
         try:
-            if self.has_google_maps:
-                return self._get_google_maps_route(
-                    origin, destination, mode, departure_time)
+            if not self.has_google_maps:
+                raise RuntimeError("Google Maps API 未初始化")
+
+            result = self.maps_client.geocode(address)
+            if not result:
+                raise RuntimeError(f"找不到地點: {address}")
+
+            location = result[0]['geometry']['location']
+            return {
+                'lat': location['lat'],
+                'lon': location['lng'],
+                'duration_min': 0,
+                'label': '交通樞紐',
+                'period': 'morning',  # 起點預設為早上時段
+                'hours': {i: [{'start': '00:00', 'end': '23:59'}] for i in range(1, 8)}
+            }
         except Exception as e:
-            print(f"Google Maps API 呼叫失敗: {str(e)}")
-
-        # API 失敗時使用預估方式
-        return self._calculate_estimated_travel_info(origin, destination, mode)
-
-    def preload_routes(self,
-                       locations: List[PlaceDetail],
-                       center: PlaceDetail,
-                       mode: str = 'driving') -> None:
-        """預先載入所有可能需要的路線資訊
-
-        輸入參數:
-            locations: 所有可能的地點列表
-            center: 中心點（通常是起點）
-            mode: 交通方式
-        """
-        print("開始預先載入路線資訊...")
-
-        # 先計算所有直線距離
-        for location in locations:
-            distance = self.calculate_distance(
-                {'lat': center.lat, 'lon': center.lon},
-                {'lat': location.lat, 'lon': location.lon}
-            )
-
-            # 只預載入在合理距離內的路線
-            if distance <= 30:  # 30公里內
-                self.get_route(
-                    origin={'lat': center.lat, 'lon': center.lon},
-                    destination={'lat': location.lat, 'lon': location.lon},
-                    mode=mode
-                )
-
-        print("路線資訊預載入完成")
+            raise RuntimeError(f"地理編碼錯誤: {str(e)}")

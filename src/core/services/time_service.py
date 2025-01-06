@@ -7,43 +7,60 @@ from typing import Any, Dict, List, Union, Tuple, Optional
 class TimeService:
     """時間管理服務
 
-    負責處理所有與時間相關的判斷，特別是：
-    1. 追蹤用餐狀態
-    2. 判斷當前適合的活動時段
-    3. 管理時間的轉換邏輯
+    負責功能:
+    1. 時間格式處理與驗證
+    2. 營業時間檢查
+    3. 時段判斷與轉換
+    4. 用餐時間管理
+    5. 用餐狀態追蹤 (新增)
     """
 
-    # 系統使用的時間格式常數
+    # 原本的類別變數保持不變
     TIME_FORMAT = '%H:%M'
     DATE_FORMAT = '%Y-%m-%d'
+    MEAL_WINDOW = 60
+    PERIODS = ['morning', 'lunch', 'afternoon', 'dinner', 'night']
 
     def __init__(self, lunch_time: str = "12:00", dinner_time: str = "18:00"):
-        """初始化時間服務"""
-        self.lunch_time = datetime.strptime(lunch_time, '%H:%M').time()
-        self.dinner_time = datetime.strptime(dinner_time, '%H:%M').time()
-        self.lunch_completed = False
-        self.dinner_completed = False
-        self.current_period = 'morning'  # 新增：明確追蹤當前時段
-        self.MEAL_WINDOW = 60
+        """初始化時間服務
+
+        輸入參數:
+            lunch_time: str - 午餐時間,格式 "HH:MM" 
+            dinner_time: str - 晚餐時間,格式 "HH:MM"
+        """
+        # 原有的時間設定
+        self.lunch_time = datetime.strptime(
+            lunch_time, self.TIME_FORMAT).time()
+        self.dinner_time = datetime.strptime(
+            dinner_time, self.TIME_FORMAT).time()
+
+        # 新增狀態追蹤
+        self.current_period = 'morning'  # 目前時段
+        self.lunch_completed = False     # 午餐完成狀態
+        self.dinner_completed = False    # 晚餐完成狀態
 
     def get_current_period(self, current_time: datetime) -> str:
         """判斷當前時段
 
-        邏輯：
-        1. 如果目前是lunch或dinner時段，只能通過完成用餐來轉換時段
-        2. 其他時段則根據時間自動轉換
+        時段轉換邏輯:
+        1. morning -> lunch: 到達午餐時間
+        2. lunch -> afternoon: 完成午餐
+        3. afternoon -> dinner: 到達晚餐時間  
+        4. dinner -> night: 完成晚餐
+
+        輸入參數:
+            current_time: datetime - 要判斷的時間點
+
+        回傳:
+            str - 時段名稱('morning'/'lunch'/'afternoon'/'dinner'/'night')
         """
+
+        # 轉換為分鐘方便比較
         current_minutes = current_time.hour * 60 + current_time.minute
         lunch_minutes = self.lunch_time.hour * 60 + self.lunch_time.minute
         dinner_minutes = self.dinner_time.hour * 60 + self.dinner_time.minute
 
-        print(f"\n時段判斷:")
-        print(f"當前時間: {current_time.strftime('%H:%M')}")
-        print(f"目前時段: {self.current_period}")
-        print(f"午餐完成: {self.lunch_completed}")
-        print(f"晚餐完成: {self.dinner_completed}")
-
-        # 根據當前時段進行判斷
+        # 時段轉換判斷
         if self.current_period == 'morning':
             if abs(current_minutes - lunch_minutes) <= self.MEAL_WINDOW:
                 self.current_period = 'lunch'
@@ -52,7 +69,7 @@ class TimeService:
         elif self.current_period == 'lunch':
             if self.lunch_completed:
                 self.current_period = 'afternoon'
-                print("轉換時段: lunch -> afternoon（午餐已完成）")
+                print("轉換時段: lunch -> afternoon")
 
         elif self.current_period == 'afternoon':
             if abs(current_minutes - dinner_minutes) <= self.MEAL_WINDOW:
@@ -62,24 +79,35 @@ class TimeService:
         elif self.current_period == 'dinner':
             if self.dinner_completed:
                 self.current_period = 'night'
-                print("轉換時段: dinner -> night（晚餐已完成）")
+                print("轉換時段: dinner -> night")
 
         return self.current_period
 
     def update_meal_status(self, place_period: str) -> None:
-        """更新用餐狀態"""
+        """更新用餐完成狀態
+
+        只有在正確的用餐時段選擇餐廳時才更新狀態
+
+        輸入參數:
+            place_period: str - 地點的時段類型('lunch'/'dinner')
+        """
         if place_period == 'lunch' and self.current_period == 'lunch':
             self.lunch_completed = True
-            print("已更新：午餐完成")
+            print("午餐完成")
+
         elif place_period == 'dinner' and self.current_period == 'dinner':
             self.dinner_completed = True
-            print("已更新：晚餐完成")
+            print("晚餐完成")
 
     def reset(self) -> None:
-        """重設所有狀態"""
+        """重置所有狀態
+
+        在開始新的行程規劃前呼叫,確保狀態清空
+        """
+        self.current_period = 'morning'
         self.lunch_completed = False
         self.dinner_completed = False
-        self.current_period = 'morning'
+        print("已重置所有時段狀態")
 
     def _parse_time(self, time_str: str) -> Optional[time]:
         """解析時間字串為 time 物件

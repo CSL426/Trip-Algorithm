@@ -1,23 +1,13 @@
 # src/core/planner/__init__.py
 
+from .system import TripPlanningSystem
 from .base import TripPlanner
 from .strategy import (
     BasePlanningStrategy,
-    StandardPlanningStrategy,
-    RelaxedPlanningStrategy,
-    CompactPlanningStrategy,
-    ThematicPlanningStrategy,
-    PlanningStrategyFactory,
-    StrategyManager
 )
 
 __all__ = [
+    'TripPlanningSystem',
     'TripPlanner',
     'BasePlanningStrategy',
-    'StandardPlanningStrategy',
-    'RelaxedPlanningStrategy',
-    'CompactPlanningStrategy',
-    'ThematicPlanningStrategy',
-    'PlanningStrategyFactory',
-    'StrategyManager'
 ]

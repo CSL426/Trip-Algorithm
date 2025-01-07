@@ -1,5 +1,6 @@
 # api key
 **/config.py
+config.py
 !src/config/config_example.py
 
 # pytest

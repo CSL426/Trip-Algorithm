@@ -1,6 +1,7 @@
 # sample_data.py
 
 import ast
+import os
 from typing import List, Dict
 import pandas as pd
 
@@ -46,6 +47,7 @@ def process_csv(filepath: str) -> pd.DataFrame:
             return {}
 
     processed_df = pd.DataFrame({
+        'placeID': df['place_id'],
         'name': df['place_name'],
         'rating': df['rating'].astype(float),
         'lat': df['lat'].astype(float),
@@ -115,6 +117,7 @@ def convert_to_place_list(df: pd.DataFrame) -> List[Dict]:
                 hours[day] = [{'start': '00:00', 'end': '23:59'}]
 
         place = {
+            "placeID": row['placeID'],
             "name": row['name'],
             "rating": float(row['rating']),
             "lat": float(row['lat']),
@@ -145,6 +148,11 @@ def sort_places_by_period(places: List[Dict]) -> List[Dict]:
     return sorted(places, key=lambda x: period_order.index(x['period']))
 
 
+# 取得目前檔案的目錄
+current_dir = os.path.dirname(os.path.abspath(__file__))
+file_path = os.path.join(current_dir, "sample_data.csv")
+
 # 建立預設資料
-df = process_csv("sample_data.csv")
+df = process_csv(file_path)
+
 DEFAULT_LOCATIONS = convert_to_place_list(df)

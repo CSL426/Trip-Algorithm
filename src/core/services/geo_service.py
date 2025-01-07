@@ -4,9 +4,9 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Union
 import math
 import googlemaps
-from src.core.models.place import PlaceDetail
-from src.core.utils.cache_decorator import geo_cache
-from src.config.config import GOOGLE_MAPS_API_KEY
+from ..models.place import PlaceDetail
+from ..utils.cache_decorator import geo_cache
+from ...config import GOOGLE_MAPS_API_KEY
 
 
 class GeoService:

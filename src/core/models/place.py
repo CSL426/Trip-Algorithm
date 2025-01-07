@@ -4,8 +4,8 @@ from typing import List, Dict, Optional, Union
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
-from src.core.services.time_service import TimeService
-from src.core.utils.validator import TripValidator
+from ..services.time_service import TimeService
+from ..utils.validator import TripValidator
 
 
 class PlaceDetail(BaseModel):

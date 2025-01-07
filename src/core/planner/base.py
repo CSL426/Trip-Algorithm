@@ -2,9 +2,9 @@
 
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Union
-from src.core.models.place import PlaceDetail
-from src.core.models.trip import Transport, TripPlan
-from src.core.utils.validator import TripValidator
+from ..models.place import PlaceDetail
+from ..models.trip import Transport, TripPlan
+from ..utils.validator import TripValidator
 
 
 class TripPlanner:

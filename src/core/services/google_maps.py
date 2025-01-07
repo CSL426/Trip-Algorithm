@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Tuple, Optional, List
 from datetime import datetime
 import googlemaps
-from src.core.utils.cache_decorator import cached
+from ..utils.cache_decorator import cached
 
 
 class GoogleMapsService:

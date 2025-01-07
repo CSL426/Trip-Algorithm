@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "trip-algorithm"
+name = "travel"
 version = "0.1.0"
 description = ""
 authors = ["CSL426 <spark.cs.liao@gmail.com>"]

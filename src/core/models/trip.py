@@ -5,7 +5,7 @@ from typing import List, Union, Literal
 from pydantic import BaseModel, Field, field_validator
 import re
 from .time import TimeSlot
-from src.core.utils.validator import TripValidator  # 更新引用
+from ..utils.validator import TripValidator  # 更新引用
 
 
 class Transport(BaseModel):

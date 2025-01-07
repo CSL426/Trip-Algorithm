@@ -4,10 +4,10 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 import random
 from typing import List, Dict, Optional, Tuple
-from src.core.models.place import PlaceDetail
-from src.core.services.time_service import TimeService
-from src.core.services.geo_service import GeoService
-from src.core.evaluator.place_scoring import PlaceScoring
+from ..models.place import PlaceDetail
+from ..services.time_service import TimeService
+from ..services.geo_service import GeoService
+from ..evaluator.place_scoring import PlaceScoring
 
 
 class BasePlanningStrategy:

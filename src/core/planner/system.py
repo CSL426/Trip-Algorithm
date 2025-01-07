@@ -3,12 +3,12 @@
 
 from datetime import datetime
 from typing import Dict, List
-from src.core.evaluator.place_scoring import PlaceScoring
-from src.core.models.place import PlaceDetail
-from src.core.planner.strategy import BasePlanningStrategy
-from src.core.services.geo_service import GeoService
-from src.core.services.time_service import TimeService
-from src.core.utils.navigation_translator import NavigationTranslator
+from ..evaluator.place_scoring import PlaceScoring
+from ..models.place import PlaceDetail
+from .strategy import BasePlanningStrategy
+from ..services.geo_service import GeoService
+from ..services.time_service import TimeService
+from ..utils.navigation_translator import NavigationTranslator
 
 
 class TripPlanningSystem:

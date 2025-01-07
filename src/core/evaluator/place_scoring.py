@@ -3,9 +3,9 @@
 from datetime import datetime
 from typing import Dict, Optional
 from dataclasses import dataclass
-from src.core.models.place import PlaceDetail
-from src.core.services.time_service import TimeService
-from src.core.services.geo_service import GeoService
+from ..models.place import PlaceDetail
+from ..services.time_service import TimeService
+from ..services.geo_service import GeoService
 
 
 @dataclass

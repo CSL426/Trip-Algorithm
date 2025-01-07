@@ -3,7 +3,7 @@
 from datetime import datetime, time, timedelta
 from typing import Tuple
 from pydantic import BaseModel, field_validator
-from src.core.utils.validator import TripValidator  # 更新引用
+from ..utils.validator import TripValidator  # 更新引用
 
 
 class TimeSlot(BaseModel):

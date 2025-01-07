@@ -10,12 +10,12 @@ DEFAULT_REQUIREMENT = {
     "start_time": None,
     "end_time": "21:00",
     "start_point": "中壢火車站",
-    "end_point": "基隆火車站",
+    "end_point": None,
     "transport_mode": "driving",
     "distance_threshold": 30,
     "breakfast_time": None,
     "lunch_time": None,
-    "dinner_time": "15:00",
+    "dinner_time": "18:00",
     "budget": None,
     "date": None
 }

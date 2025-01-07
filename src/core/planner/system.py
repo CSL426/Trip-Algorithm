@@ -84,10 +84,10 @@ class TripPlanningSystem:
             for key, value in requirement.items():
                 if value is not None:
                     default_requirement[key] = value
-            
+
             # 使用更新後的設定值
             requirement = default_requirement
-            
+
             # 設定起點和終點
             self.start_location = self._get_start_location(
                 requirement.get('start_point')
@@ -142,23 +142,6 @@ class TripPlanningSystem:
         except Exception as e:
             print(f"行程規劃失敗: {str(e)}")
             raise
-
-    def _update_period_statistics(self, itinerary: List[Dict]) -> None:
-        """更新各時段的統計資訊"""
-        for item in itinerary:
-            period = self.time_service.get_current_period(
-                datetime.strptime(item['start_time'], '%H:%M')
-            )
-            self.period_statistics[period]['count'] += 1
-            self.period_statistics[period]['time'] += item['duration']
-
-    def print_planning_summary(self) -> None:
-        """輸出規劃統計摘要"""
-        print("\n=== 規劃統計 ===")
-        for period, stats in self.period_statistics.items():
-            if stats['count'] > 0:
-                print(f"{period}: {stats['count']}個地點，"
-                      f"共{stats['time']}分鐘")
 
     def _prepare_planning_context(self, locations: List[PlaceDetail], requirement: Dict) -> Dict:
         """準備規劃上下文
@@ -221,7 +204,8 @@ class TripPlanningSystem:
             print(f"名稱: {plan['name']}")
             print(f"時間: {plan['start_time']} - {plan['end_time']}")
             print(f"停留: {plan['duration']}分鐘", end=' ')
-            print(f"交通: {plan['transport_details']}({plan['travel_time']}分鐘)")
+            print(
+                f"交通: {plan['transport']['mode']}({plan['transport']['time']}分鐘)")
 
             # 如果需要，顯示詳細導航
             if show_navigation and 'route_info' in plan:
@@ -229,7 +213,7 @@ class TripPlanningSystem:
                 print(NavigationTranslator.format_navigation(
                     plan['route_info']))
 
-            total_travel_time += plan['travel_time']
+            total_travel_time += plan['transport']['time']
             total_duration += plan['duration']
 
         # 顯示統計資訊

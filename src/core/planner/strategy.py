@@ -48,7 +48,7 @@ class BasePlanningStrategy:
         self.travel_mode = config['travel_mode']
         self.distance_threshold = config.get('distance_threshold', 30)
         self.end_location = config.get('end_location')
-        
+
         # 時段管理
         self.period_sequence = ['morning', 'lunch',
                                 'afternoon', 'dinner', 'night']
@@ -63,39 +63,6 @@ class BasePlanningStrategy:
         # 用餐狀態
         self.lunch_completed = False
         self.dinner_completed = False
-
-    def _update_period(self, current_time: datetime) -> None:
-        """更新當前時段
-
-        根據以下規則更新時段：
-        1. morning -> lunch：到達午餐時間
-        2. lunch -> afternoon：完成午餐
-        3. afternoon -> dinner：到達晚餐時間
-        4. dinner -> night：完成晚餐
-
-        輸入參數:
-            current_time: datetime 當前時間
-        """
-        # 取得目前的時段
-        new_period = self.time_service.get_current_period(current_time)
-
-        # 檢查是否需要更新時段
-        if new_period != self.current_period:
-            # 檢查時段轉換的合法性
-            current_idx = self.period_sequence.index(self.current_period)
-            new_idx = self.period_sequence.index(new_period)
-
-            # 只允許向後轉換時段
-            if new_idx > current_idx:
-                # 檢查用餐時段的轉換條件
-                if new_period == 'afternoon' and not self.lunch_completed:
-                    return
-                if new_period == 'night' and not self.dinner_completed:
-                    return
-
-                print(f"轉換時段: {self.current_period} -> {new_period}")
-                self.current_period = new_period
-                self.period_status[new_period] = True
 
     def select_next_place(self,
                           current_location: PlaceDetail,
@@ -154,8 +121,8 @@ class BasePlanningStrategy:
             departure_time=current_time
         )
 
-        print(f"\n選中地點: {selected_place.name}")
-        print(f"預計交通時間: {travel_info['duration_minutes']}分鐘")
+        # print(f"\n選中地點: {selected_place.name}")
+        # print(f"預計交通時間: {travel_info['duration_minutes']}分鐘")
 
         # 7. 更新用餐狀態
         self.time_service.update_meal_status(selected_place.period)
@@ -188,7 +155,7 @@ class BasePlanningStrategy:
                 - duration: int - 停留時間(分鐘)
                 - travel_time: int - 交通時間(分鐘)
                 - travel_distance: float - 交通距離(公里)
-                - transport_details: str - 交通方式
+                - transport: str - 交通方式
                 - route_info: Dict - 路線資訊(如果有)
         """
         # 初始化行程
@@ -211,6 +178,7 @@ class BasePlanningStrategy:
                 'transport_mode': self.travel_mode
             }
         )
+        self.visited_places.add(current_location.name)
         self._itinerary.append(start_item)
 
         print(f"\n=== 開始規劃行程 ===")
@@ -223,7 +191,7 @@ class BasePlanningStrategy:
 
         # 主要規劃迴圈
         while remaining_places and visit_time < self.end_time:
-            print(f"\n==== 選擇第 {iteration} 個地點 ====")
+            # print(f"\n==== 選擇第 {iteration} 個地點 ====")
 
             # 選擇下一個地點
             next_place = self.select_next_place(
@@ -285,7 +253,7 @@ class BasePlanningStrategy:
                 },
                 mode=self.travel_mode
             )
-            
+
             final_arrival_time = self._calculate_arrival_time(
                 visit_time,
                 final_travel_info['duration_minutes']
@@ -360,28 +328,72 @@ class BasePlanningStrategy:
 
         回傳:
             Dict 完整的行程項目資訊，包含:
-            - name: 地點名稱
-            - step: 順序編號(從1開始)
-            - start_time: 到達時間(HH:MM格式)
-            - end_time: 離開時間(HH:MM格式)
-            - duration: 停留時間(分鐘)
-            - travel_time: 交通時間(分鐘)
-            - travel_distance: 交通距離(公里)
-            - transport_details: 交通方式
-            - route_info: 路線資訊(如果有)
+                name: str - 地點名稱
+                step: int - 在整個行程中的順序編號，從1開始計數
+                start_time: str - 到達時間，採用 "HH:MM" 格式 (例如 "09:30")
+                end_time: str - 離開時間，採用 "HH:MM" 格式
+                duration: int - 在該地點的停留時間，以分鐘為單位
+                travel_time: int - 到達該地點所需的交通時間，以分鐘為單位
+                travel_distance: float - 到達該地點的交通距離，以公里為單位
+                transport: str - 使用的交通方式（例如：driving、transit、walking）
+                route_info: Dict - 詳細的路線資訊（若有），包含路徑指引等
         """
+
+        # 取得當天的營業時間
+        weekday = arrival_time.isoweekday()  # 1-7
+        day_hours = place.hours.get(weekday, [])
+
+        # 找出符合抵達時間的營業時段
+        matching_hours = None
+        for slot in day_hours:
+            if slot:
+                start = datetime.strptime(slot['start'], '%H:%M').time()
+                end = datetime.strptime(slot['end'], '%H:%M').time()
+                if start <= arrival_time.time() <= end:
+                    matching_hours = slot
+                    break
+
+        # 計算交通時段
+        travel_end = arrival_time
+        travel_start = travel_end - \
+            timedelta(minutes=travel_info.get('duration_minutes', 0))
+        travel_period = f"{travel_start.strftime('%H:%M')}-{travel_end.strftime('%H:%M')}"
+        
+        # 把起點終點的label替換
+        if len(self.visited_places) == 0:
+            display_label = '起點'
+        elif self.end_location and place.name == self.end_location.name:
+            display_label = '終點'
+        else:
+            display_label = place.label
+        
+        # 交通方式中英對照
+        transport_display = {
+            'transit': '大眾運輸',
+            'driving': '開車',
+            'walking': '步行',
+            'bicycling': '騎車'
+        }
+        transport_mode = travel_info.get('transport_mode', self.travel_mode)
+        transport_chinese = transport_display.get(transport_mode, transport_mode)
+    
         return {
+            'step': len(self.visited_places),
             'name': place.name,
-            'step': len(self.visited_places) + 1,
+            'label': display_label,
+            'hours': matching_hours,
+            'lat': place.lat,
+            'lon': place.lon,
             'start_time': arrival_time.strftime('%H:%M'),
             'end_time': departure_time.strftime('%H:%M'),
             'duration': place.duration_min,
-            'travel_time': travel_info['duration_minutes'],
-            'travel_distance': travel_info.get('distance_km', 0),
-            'transport_details': travel_info.get('transport_mode', self.travel_mode),
+            'transport': {
+                'mode': transport_chinese,
+                'travel_distance': travel_info.get('distance_km', 0),
+                'time': travel_info.get('duration_minutes', 20),
+                'period': travel_period,
+            },
             'route_info': travel_info.get('route_info'),
-            'lat': place.lat,
-            'lon': place.lon
         }
 
     def is_feasible(self,

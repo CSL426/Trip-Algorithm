@@ -93,11 +93,11 @@ class TimeService:
         """
         if place_period == 'lunch' and self.current_period == 'lunch':
             self.lunch_completed = True
-            print("午餐完成")
+            # print("午餐完成")
 
         elif place_period == 'dinner' and self.current_period == 'dinner':
             self.dinner_completed = True
-            print("晚餐完成")
+            # print("晚餐完成")
 
     def reset(self) -> None:
         """重置所有狀態

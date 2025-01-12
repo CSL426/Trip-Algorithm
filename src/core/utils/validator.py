@@ -406,14 +406,14 @@ class TripValidator:
     @classmethod
     def convert_coordinates(cls, coord_str: str) -> Optional[Dict[str, float]]:
         """轉換座標字串為經緯度字典
-        
+
         輸入:
             coord_str: 座標字串，格式：
                       "lat,lon" 或 "lat, lon"
-                
+
         回傳:
             Dict: {'lat': float, 'lon': float} 或 None
-            
+
         使用範例:
             >>> TripValidator.convert_coordinates("25.0478, 121.5170")
             {'lat': 25.0478, 'lon': 121.5170}
@@ -441,13 +441,13 @@ class TripValidator:
     @classmethod
     def format_business_hours(cls, hours: Dict) -> Dict:
         """格式化營業時間，確保格式一致
-        
+
         輸入:
             hours: 原始營業時間字典
-                
+
         回傳:
             Dict: 標準格式的營業時間字典
-            
+
         使用範例:
             >>> hours = {1: [{'start': '09:00', 'end': '17:00'}]}
             >>> formatted = TripValidator.format_business_hours(hours)
@@ -466,3 +466,31 @@ class TripValidator:
                     formatted[day] = slots
 
         return formatted
+
+class TimeCalculator:
+    # 停留時間對照表
+    DEFAULT_DURATIONS = {
+        # 正餐餐廳 (90分鐘)
+        '中菜館': 90,
+        '壽司店': 90,
+        # 快速餐飲 (45分鐘) 
+        '快餐店': 45,
+        '麵店': 45,
+        # 景點 (120分鐘)
+        '景點': 120,
+        '旅遊景點': 120,
+        # 其他
+        'default': 60
+    }
+
+    @classmethod 
+    def get_default_duration(cls, label: str) -> int:
+        """計算預設停留時間
+        
+        輸入參數:
+            label (str): 地點類型標籤
+            
+        回傳:
+            int: 建議停留時間(分鐘)
+        """
+        return cls.DEFAULT_DURATIONS.get(label, cls.DEFAULT_DURATIONS['default'])
